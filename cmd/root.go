@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"flag"
 	"fmt"
-	"io/ioutil"
 	"runtime/debug"
 
 	"github.com/derailed/k9s/internal/client"
@@ -14,7 +12,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
-	"k8s.io/klog"
 )
 
 const (
@@ -26,10 +23,9 @@ const (
 var _ config.KubeSettings = (*client.Config)(nil)
 
 var (
-	version, commit, date = "dev", "dev", "n/a"
+	version, commit, date = "dev", "dev", client.NA
 	k9sFlags              *config.Flags
 	k8sFlags              *genericclioptions.ConfigFlags
-	demoMode              = new(bool)
 
 	rootCmd = &cobra.Command{
 		Use:   appName,
@@ -41,22 +37,8 @@ var (
 
 func init() {
 	rootCmd.AddCommand(versionCmd(), infoCmd())
-	initTransientFlags()
 	initK9sFlags()
 	initK8sFlags()
-
-	// Klogs (of course) want to print stuff to the screen ;(
-	klog.InitFlags(nil)
-	klog.SetOutput(ioutil.Discard)
-	if err := flag.Set("stderrthreshold", "fatal"); err != nil {
-		log.Error().Err(err)
-	}
-	if err := flag.Set("alsologtostderr", "false"); err != nil {
-		log.Error().Err(err)
-	}
-	if err := flag.Set("logtostderr", "false"); err != nil {
-		log.Error().Err(err)
-	}
 }
 
 // Execute root command
@@ -79,17 +61,14 @@ func run(cmd *cobra.Command, args []string) {
 
 	zerolog.SetGlobalLevel(parseLevel(*k9sFlags.LogLevel))
 	app := view.NewApp(loadConfiguration())
-	{
-		defer app.BailOut()
-		if err := app.Init(version, *k9sFlags.RefreshRate); err != nil {
-			panic(fmt.Sprintf("app init failed -- %v", err))
-		}
-		if err := app.Run(); err != nil {
-			panic(fmt.Sprintf("app run failed %v", err))
-		}
-		if view.ExitStatus != "" {
-			panic(fmt.Sprintf("view exit status %s", view.ExitStatus))
-		}
+	if err := app.Init(version, *k9sFlags.RefreshRate); err != nil {
+		panic(fmt.Sprintf("app init failed -- %v", err))
+	}
+	if err := app.Run(); err != nil {
+		panic(fmt.Sprintf("app run failed %v", err))
+	}
+	if view.ExitStatus != "" {
+		panic(fmt.Sprintf("view exit status %s", view.ExitStatus))
 	}
 }
 
@@ -104,30 +83,18 @@ func loadConfiguration() *config.Config {
 		log.Warn().Msg("Unable to locate K9s config. Generating new configuration...")
 	}
 
-	if demoMode != nil {
-		k9sCfg.SetDemoMode(*demoMode)
-	}
 	if *k9sFlags.RefreshRate != config.DefaultRefreshRate {
 		k9sCfg.K9s.OverrideRefreshRate(*k9sFlags.RefreshRate)
 	}
 
-	if k9sFlags.Headless != nil {
-		k9sCfg.K9s.OverrideHeadless(*k9sFlags.Headless)
-	}
+	k9sCfg.K9s.OverrideHeadless(*k9sFlags.Headless)
+	k9sCfg.K9s.OverrideLogoless(*k9sFlags.Logoless)
+	k9sCfg.K9s.OverrideCrumbsless(*k9sFlags.Crumbsless)
+	k9sCfg.K9s.OverrideReadOnly(*k9sFlags.ReadOnly)
+	k9sCfg.K9s.OverrideWrite(*k9sFlags.Write)
+	k9sCfg.K9s.OverrideCommand(*k9sFlags.Command)
 
-	if k9sFlags.ReadOnly != nil {
-		k9sCfg.K9s.OverrideReadOnly(*k9sFlags.ReadOnly)
-	}
-
-	if k9sFlags.Command != nil {
-		k9sCfg.K9s.OverrideCommand(*k9sFlags.Command)
-	}
-
-	if isBoolSet(k9sFlags.AllNamespaces) && k9sCfg.SetActiveNamespace(client.AllNamespaces) != nil {
-		log.Error().Msg("Setting active namespace")
-	}
-
-	if err := k9sCfg.Refine(k8sFlags); err != nil {
+	if err := k9sCfg.Refine(k8sFlags, k9sFlags); err != nil {
 		log.Error().Err(err).Msgf("refine failed")
 	}
 	conn, err := client.InitConnection(k8sCfg)
@@ -151,10 +118,6 @@ func loadConfiguration() *config.Config {
 	return k9sCfg
 }
 
-func isBoolSet(b *bool) bool {
-	return b != nil && *b
-}
-
 func parseLevel(level string) zerolog.Level {
 	switch level {
 	case "debug":
@@ -168,15 +131,6 @@ func parseLevel(level string) zerolog.Level {
 	default:
 		return zerolog.InfoLevel
 	}
-}
-
-func initTransientFlags() {
-	rootCmd.Flags().BoolVar(
-		demoMode,
-		"demo",
-		false,
-		"Enable demo mode to show keyboard commands",
-	)
 }
 
 func initK9sFlags() {
@@ -199,6 +153,18 @@ func initK9sFlags() {
 		false,
 		"Turn K9s header off",
 	)
+	rootCmd.Flags().BoolVar(
+		k9sFlags.Logoless,
+		"logoless",
+		false,
+		"Turn K9s logo off",
+	)
+	rootCmd.Flags().BoolVar(
+		k9sFlags.Crumbsless,
+		"crumbsless",
+		false,
+		"Turn K9s crumbs off",
+	)
 	rootCmd.Flags().BoolVarP(
 		k9sFlags.AllNamespaces,
 		"all-namespaces", "A",
@@ -209,13 +175,19 @@ func initK9sFlags() {
 		k9sFlags.Command,
 		"command", "c",
 		config.DefaultCommand,
-		"Specify the default command to view when the application launches",
+		"Overrides the default resource to load when the application launches",
 	)
 	rootCmd.Flags().BoolVar(
 		k9sFlags.ReadOnly,
 		"readonly",
 		false,
-		"Disable all commands that modify the cluster",
+		"Sets readOnly mode by overriding readOnly configuration setting",
+	)
+	rootCmd.Flags().BoolVar(
+		k9sFlags.Write,
+		"write",
+		false,
+		"Sets write mode by overriding the readOnly configuration setting",
 	)
 }
 
@@ -320,4 +292,8 @@ func initCertFlags() {
 		"",
 		"Bearer token for authentication to the API server",
 	)
+}
+
+func isBoolSet(b *bool) bool {
+	return b != nil && *b
 }

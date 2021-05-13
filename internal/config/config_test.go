@@ -18,20 +18,20 @@ func init() {
 }
 
 func TestConfigRefine(t *testing.T) {
-	cfgFile, ctx, cluster, ns := "testdata/kubeconfig-test.yml", "test", "c1", "ns1"
+	cfgFile, ctx, cluster, ns := "testdata/kubeconfig-test.yml", "test2", "cluster2", "ns2"
 	uu := map[string]struct {
 		flags                       *genericclioptions.ConfigFlags
 		issue                       bool
 		context, cluster, namespace string
 	}{
-		"kubeconfig": {
+		"plain": {
 			flags:     &genericclioptions.ConfigFlags{KubeConfig: &cfgFile},
 			issue:     false,
-			context:   "test",
-			cluster:   "testCluster",
-			namespace: "testNS",
+			context:   "test1",
+			cluster:   "cluster1",
+			namespace: "ns1",
 		},
-		"override": {
+		"overrideNS": {
 			flags: &genericclioptions.ConfigFlags{
 				KubeConfig:  &cfgFile,
 				Context:     &ctx,
@@ -62,8 +62,8 @@ func TestConfigRefine(t *testing.T) {
 			mk := NewMockKubeSettings()
 			m.When(mk.NamespaceNames(namespaces())).ThenReturn([]string{"default"})
 			cfg := config.NewConfig(mk)
-			err := cfg.Refine(u.flags)
 
+			err := cfg.Refine(u.flags, nil)
 			if u.issue {
 				assert.NotNil(t, err)
 			} else {
@@ -261,13 +261,17 @@ func TestSetup(t *testing.T) {
 
 var expectedConfig = `k9s:
   refreshRate: 100
+  maxConnRetry: 5
+  enableMouse: false
   headless: false
+  logoless: false
+  crumbsless: false
   readOnly: true
   noIcons: false
   logger:
     tail: 500
     buffer: 800
-    sinceSeconds: -1
+    sinceSeconds: 60
     fullScreenLogs: false
     textWrap: false
     showTime: false
@@ -285,6 +289,8 @@ var expectedConfig = `k9s:
         nodeShell: false
       shellPod:
         image: busybox:1.31
+        command: []
+        args: []
         namespace: default
         limits:
           cpu: 100m
@@ -305,6 +311,8 @@ var expectedConfig = `k9s:
         nodeShell: false
       shellPod:
         image: busybox:1.31
+        command: []
+        args: []
         namespace: default
         limits:
           cpu: 100m
@@ -325,6 +333,8 @@ var expectedConfig = `k9s:
         nodeShell: false
       shellPod:
         image: busybox:1.31
+        command: []
+        args: []
         namespace: default
         limits:
           cpu: 100m
@@ -341,13 +351,17 @@ var expectedConfig = `k9s:
 
 var resetConfig = `k9s:
   refreshRate: 2
+  maxConnRetry: 5
+  enableMouse: false
   headless: false
+  logoless: false
+  crumbsless: false
   readOnly: false
   noIcons: false
   logger:
     tail: 200
     buffer: 2000
-    sinceSeconds: -1
+    sinceSeconds: 60
     fullScreenLogs: false
     textWrap: false
     showTime: false
@@ -365,6 +379,8 @@ var resetConfig = `k9s:
         nodeShell: false
       shellPod:
         image: busybox:1.31
+        command: []
+        args: []
         namespace: default
         limits:
           cpu: 100m

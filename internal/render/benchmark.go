@@ -11,7 +11,7 @@ import (
 
 	"github.com/derailed/k9s/internal/client"
 	"github.com/derailed/tview"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -76,7 +76,7 @@ func (b Benchmark) Render(o interface{}, ns string, r *Row) error {
 	return nil
 }
 
-// Happy returns true if resoure is happy, false otherwise
+// Happy returns true if resource is happy, false otherwise
 func (Benchmark) diagnose(ns string, ff Fields) error {
 	statusCol := 3
 	if !client.IsAllNamespaces(ns) {

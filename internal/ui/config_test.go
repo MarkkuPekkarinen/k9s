@@ -8,7 +8,7 @@ import (
 	"github.com/derailed/k9s/internal/config"
 	"github.com/derailed/k9s/internal/render"
 	"github.com/derailed/k9s/internal/ui"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -24,6 +24,6 @@ func TestConfiguratorRefreshStyle(t *testing.T) {
 	cfg.RefreshStyles("")
 
 	assert.True(t, cfg.HasSkin())
-	assert.Equal(t, tcell.ColorGhostWhite, render.StdColor)
-	assert.Equal(t, tcell.ColorWhiteSmoke, render.ErrColor)
+	assert.Equal(t, tcell.ColorGhostWhite.TrueColor(), render.StdColor)
+	assert.Equal(t, tcell.ColorWhiteSmoke.TrueColor(), render.ErrColor)
 }

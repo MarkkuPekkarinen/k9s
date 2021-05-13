@@ -113,7 +113,7 @@ func (f *OpenFaas) Delete(path string, _, _ bool) error {
 }
 
 // ToYAML dumps a function to yaml.
-func (f *OpenFaas) ToYAML(path string) (string, error) {
+func (f *OpenFaas) ToYAML(path string, _ bool) (string, error) {
 	return f.Describe(path)
 }
 
@@ -204,7 +204,7 @@ func createSystemEndpoint(gateway, namespace string) (string, error) {
 
 	gatewayURL, err := url.Parse(gateway)
 	if err != nil {
-		return "", fmt.Errorf("invalid gateway URL: %s", err.Error())
+		return "", fmt.Errorf("invalid gateway URL: %w", err)
 	}
 	gatewayURL.Path = path.Join(gatewayURL.Path, systemPath)
 	if len(namespace) > 0 {

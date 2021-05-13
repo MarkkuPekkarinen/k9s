@@ -5,7 +5,7 @@ import (
 	"image"
 
 	"github.com/derailed/tview"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 )
 
 const (
@@ -164,6 +164,7 @@ func computeDelta(d1, d2 int64) delta {
 
 func printDelta(sc tcell.Screen, d delta, o image.Point, s tcell.Style) {
 	s = s.Dim(false)
+	// nolint:exhaustive
 	switch d {
 	case DeltaLess:
 		sc.SetContent(o.X-1, o.Y+1, '↓', nil, s)

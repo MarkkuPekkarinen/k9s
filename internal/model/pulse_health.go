@@ -3,7 +3,6 @@ package model
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/derailed/k9s/internal/client"
 	"github.com/derailed/k9s/internal/dao"
@@ -27,10 +26,6 @@ func NewPulseHealth(f dao.Factory) *PulseHealth {
 
 // List returns a canned collection of resources health.
 func (h *PulseHealth) List(ctx context.Context, ns string) ([]runtime.Object, error) {
-	defer func(t time.Time) {
-		log.Debug().Msgf("PulseHealthCheck %v", time.Since(t))
-	}(time.Now())
-
 	gvrs := []string{
 		"v1/pods",
 		"v1/events",
@@ -53,7 +48,7 @@ func (h *PulseHealth) List(ctx context.Context, ns string) ([]runtime.Object, er
 
 	mm, err := h.checkMetrics(ctx)
 	if err != nil {
-		return hh, nil
+		return hh, err
 	}
 	for _, m := range mm {
 		hh = append(hh, m)

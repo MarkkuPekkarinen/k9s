@@ -8,7 +8,7 @@ import (
 	"github.com/derailed/k9s/internal/dao"
 	"github.com/derailed/k9s/internal/ui"
 	"github.com/derailed/k9s/internal/ui/dialog"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 )
 
 // RestartExtender represents a restartable resource.
@@ -19,13 +19,16 @@ type RestartExtender struct {
 // NewRestartExtender returns a new extender.
 func NewRestartExtender(v ResourceViewer) ResourceViewer {
 	r := RestartExtender{ResourceViewer: v}
-	r.bindKeys(v.Actions())
+	v.AddBindKeysFn(r.bindKeys)
 
 	return &r
 }
 
 // BindKeys creates additional menu actions.
 func (r *RestartExtender) bindKeys(aa ui.KeyActions) {
+	if r.App().Config.K9s.IsReadOnly() {
+		return
+	}
 	aa.Add(ui.KeyActions{
 		tcell.KeyCtrlT: ui.NewKeyAction("Restart", r.restartCmd, true),
 	})
@@ -61,7 +64,7 @@ func (r *RestartExtender) restartCmd(evt *tcell.EventKey) *tcell.EventKey {
 func (r *RestartExtender) restartRollout(ctx context.Context, path string) error {
 	res, err := dao.AccessorFor(r.App().factory, r.GVR())
 	if err != nil {
-		return nil
+		return err
 	}
 	s, ok := res.(dao.Restartable)
 	if !ok {

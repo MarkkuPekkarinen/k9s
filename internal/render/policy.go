@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/derailed/k9s/internal/client"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -78,7 +78,7 @@ func cleanseResource(r string) string {
 	return n
 }
 
-// PolicyRes represents a rback policy rule.
+// PolicyRes represents a rbac policy rule.
 type PolicyRes struct {
 	Namespace, Binding string
 	Resource, Group    string
@@ -122,7 +122,7 @@ func (pp Policies) Upsert(p PolicyRes) Policies {
 	return pp
 }
 
-// Find locates a row by id. Retturns false is not found.
+// Find locates a row by id. Returns false is not found.
 func (pp Policies) find(res string) (int, bool) {
 	for i, p := range pp {
 		if p.Resource == res {

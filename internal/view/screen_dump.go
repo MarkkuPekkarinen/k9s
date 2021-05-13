@@ -10,7 +10,7 @@ import (
 	"github.com/derailed/k9s/internal/config"
 	"github.com/derailed/k9s/internal/render"
 	"github.com/derailed/k9s/internal/ui"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/rs/zerolog/log"
 )
 
@@ -25,7 +25,7 @@ func NewScreenDump(gvr client.GVR) ResourceViewer {
 		ResourceViewer: NewBrowser(gvr),
 	}
 	s.GetTable().SetBorderFocusColor(tcell.ColorSteelBlue)
-	s.GetTable().SetSelectedStyle(tcell.ColorWhite, tcell.ColorRoyalBlue, tcell.AttrNone)
+	s.GetTable().SetSelectedStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorRoyalBlue).Attributes(tcell.AttrNone))
 	s.GetTable().SetColorerFn(render.ScreenDump{}.ColorerFunc())
 	s.GetTable().SetSortCol(ageCol, true)
 	s.GetTable().SelectRow(1, true)
@@ -39,6 +39,7 @@ func (s *ScreenDump) dirContext(ctx context.Context) context.Context {
 	dir := filepath.Join(config.K9sDumpDir, s.App().Config.K9s.CurrentCluster)
 	log.Debug().Msgf("SD-DIR %q", dir)
 	config.EnsureFullPath(dir, config.DefaultDirMod)
+
 	return context.WithValue(ctx, internal.KeyDir, dir)
 }
 

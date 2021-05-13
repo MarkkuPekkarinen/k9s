@@ -145,6 +145,11 @@ func (h Header) HasAge() bool {
 	return h.IndexOf(ageCol, true) != -1
 }
 
+// IsMetricsCol checks if given column index represents metrics.
+func (h Header) IsMetricsCol(col int) bool {
+	return h[col].MX
+}
+
 // IsAgeCol checks if given column index is the age column.
 func (h Header) IsAgeCol(col int) bool {
 	if !h.HasAge() || col >= len(h) {
@@ -171,7 +176,7 @@ func (h Header) IndexOf(colName string, includeWide bool) int {
 	return -1
 }
 
-// Dump for debuging.
+// Dump for debugging.
 func (h Header) Dump() {
 	log.Debug().Msgf("HEADER")
 	for i, c := range h {

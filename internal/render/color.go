@@ -1,7 +1,7 @@
 package render
 
 import (
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 )
 
 var (
@@ -39,6 +39,7 @@ func DefaultColorer(ns string, h Header, re RowEvent) tcell.Color {
 		return ErrColor
 	}
 
+	// nolint:exhaustive
 	switch re.Kind {
 	case EventAdd:
 		return AddColor

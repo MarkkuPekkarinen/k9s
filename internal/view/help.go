@@ -14,7 +14,8 @@ import (
 	"github.com/derailed/k9s/internal/render"
 	"github.com/derailed/k9s/internal/ui"
 	"github.com/derailed/tview"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -29,20 +30,23 @@ type HelpFunc func() model.MenuHints
 type Help struct {
 	*Table
 
+	styles                   *config.Styles
+	hints                    HelpFunc
 	maxKey, maxDesc, maxRows int
 }
 
 // NewHelp returns a new help viewer.
-func NewHelp() *Help {
+func NewHelp(app *App) *Help {
 	return &Help{
 		Table: NewTable(client.NewGVR("help")),
+		hints: app.Content.Top().Hints,
 	}
 }
 
 // Init initializes the component.
 func (h *Help) Init(ctx context.Context) error {
 	if err := h.Table.Init(ctx); err != nil {
-		return nil
+		return err
 	}
 	h.SetSelectable(false, false)
 	h.resetTitle()
@@ -50,13 +54,22 @@ func (h *Help) Init(ctx context.Context) error {
 	h.SetBorderPadding(0, 0, 1, 1)
 	h.bindKeys()
 	h.build()
-	h.SetBackgroundColor(h.App().Styles.BgColor())
+	h.app.Styles.AddListener(h)
+	h.StylesChanged(h.app.Styles)
 
 	return nil
 }
 
+// StylesChanged notifies skin changed.
+func (h *Help) StylesChanged(s *config.Styles) {
+	log.Debug().Msgf("CHANGED!")
+	h.styles = s
+	h.SetBackgroundColor(s.BgColor())
+	h.updateStyle()
+}
+
 func (h *Help) bindKeys() {
-	h.Actions().Delete(ui.KeySpace, tcell.KeyCtrlSpace, tcell.KeyCtrlS)
+	h.Actions().Delete(ui.KeySpace, tcell.KeyCtrlSpace, tcell.KeyCtrlS, ui.KeySlash)
 	h.Actions().Set(ui.KeyActions{
 		tcell.KeyEscape: ui.NewKeyAction("Back", h.app.PrevCmd, true),
 		ui.KeyHelp:      ui.NewKeyAction("Back", h.app.PrevCmd, false),
@@ -87,17 +100,18 @@ func (h *Help) computeExtraMaxes(ee map[string]string) {
 }
 
 func (h *Help) build() {
+	log.Debug().Msgf("BUILD!!")
 	h.Clear()
 
 	sections := []string{"RESOURCE", "GENERAL", "NAVIGATION", "HELP"}
-
 	h.maxRows = len(h.showGeneral())
 	ff := []HelpFunc{
-		h.app.Content.Top().Hints,
+		h.hints,
 		h.showGeneral,
 		h.showNav,
 		h.showHelp,
 	}
+
 	var col int
 	extras := h.app.Content.Top().ExtraHints()
 	for i, section := range sections {
@@ -239,6 +253,10 @@ func (h *Help) showGeneral() model.MenuHints {
 			Description: "Toggle Header",
 		},
 		{
+			Mnemonic:    "Ctrl-g",
+			Description: "Toggle Crumbs",
+		},
+		{
 			Mnemonic:    ":q",
 			Description: "Quit",
 		},
@@ -277,15 +295,15 @@ func (h *Help) addSection(c int, title string, hh model.MenuHints) {
 		h.maxRows = len(hh)
 	}
 	row := 0
-	h.SetCell(row, c, titleCell(title))
+	h.SetCell(row, c, h.titleCell(title))
 	h.addSpacer(c + 1)
 	row++
 
 	for _, hint := range hh {
 		col := c
-		h.SetCell(row, col, keyCell(hint.Mnemonic, h.maxKey))
+		h.SetCell(row, col, padCellWithRef(toMnemonic(hint.Mnemonic), h.maxKey, hint.Mnemonic))
 		col++
-		h.SetCell(row, col, infoCell(hint.Description, h.maxDesc))
+		h.SetCell(row, col, padCell(hint.Description, h.maxDesc))
 		row++
 	}
 
@@ -302,6 +320,36 @@ func (h *Help) addSection(c int, title string, hh model.MenuHints) {
 	}
 }
 
+func (h *Help) updateStyle() {
+	var (
+		style   = tcell.StyleDefault.Background(h.styles.K9s.Help.BgColor.Color())
+		key     = style.Foreground(h.styles.K9s.Help.KeyColor.Color()).Bold(true)
+		numKey  = style.Foreground(h.app.Styles.K9s.Help.NumKeyColor.Color()).Bold(true)
+		info    = style.Foreground(h.app.Styles.K9s.Help.FgColor.Color())
+		heading = style.Foreground(h.app.Styles.K9s.Help.SectionColor.Color())
+	)
+	for col := 0; col < h.GetColumnCount(); col++ {
+		for row := 0; row < h.GetRowCount(); row++ {
+			c := h.GetCell(row, col)
+			if c == nil {
+				continue
+			}
+			switch {
+			case row == 0:
+				c.SetStyle(heading)
+			case col%2 != 0:
+				c.SetStyle(info)
+			default:
+				if _, err := strconv.Atoi(extractRef(c)); err == nil {
+					c.SetStyle(numKey)
+					continue
+				}
+				c.SetStyle(key)
+			}
+		}
+	}
+}
+
 // ----------------------------------------------------------------------------
 // Helpers...
 
@@ -311,6 +359,14 @@ func toMnemonic(s string) string {
 	}
 
 	return "<" + keyConv(strings.ToLower(s)) + ">"
+}
+
+func extractRef(c *tview.TableCell) string {
+	if ref, ok := c.GetReference().(string); ok {
+		return ref
+	}
+
+	return c.Text
 }
 
 func keyConv(s string) string {
@@ -325,9 +381,9 @@ func keyConv(s string) string {
 	return strings.Replace(s, "alt", "opt", 1)
 }
 
-func titleCell(title string) *tview.TableCell {
+func (h *Help) titleCell(title string) *tview.TableCell {
 	c := tview.NewTableCell(title)
-	c.SetTextColor(tcell.ColorGreen)
+	c.SetTextColor(h.Styles().K9s.Help.SectionColor.Color())
 	c.SetAttributes(tcell.AttrBold)
 	c.SetExpansion(1)
 	c.SetAlign(tview.AlignLeft)
@@ -335,23 +391,8 @@ func titleCell(title string) *tview.TableCell {
 	return c
 }
 
-func keyCell(k string, width int) *tview.TableCell {
-	c := padCell(toMnemonic(k), width)
-	if _, err := strconv.Atoi(k); err != nil {
-		c.SetTextColor(tcell.ColorDodgerBlue)
-	} else {
-		c.SetTextColor(tcell.ColorFuchsia)
-	}
-	c.SetAttributes(tcell.AttrBold)
-
-	return c
-}
-
-func infoCell(info string, width int) *tview.TableCell {
-	c := padCell(info, width)
-	c.SetTextColor(tcell.ColorWhite)
-
-	return c
+func padCellWithRef(s string, width int, ref interface{}) *tview.TableCell {
+	return padCell(s, width).SetReference(ref)
 }
 
 func padCell(s string, width int) *tview.TableCell {

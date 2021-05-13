@@ -5,7 +5,7 @@ import (
 
 	"github.com/derailed/k9s/internal/model"
 	"github.com/derailed/tview"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 )
 
 // KeyListenerFunc listens to key presses.
@@ -40,7 +40,7 @@ func (t *Tree) Init(ctx context.Context) error {
 	t.SetBorderAttributes(tcell.AttrBold)
 	t.SetBorderPadding(0, 0, 1, 1)
 	t.SetGraphics(true)
-	t.SetGraphicsColor(tcell.ColorFloralWhite)
+	t.SetGraphicsColor(tcell.ColorCadetBlue)
 	t.SetInputCapture(t.keyboard)
 
 	return nil

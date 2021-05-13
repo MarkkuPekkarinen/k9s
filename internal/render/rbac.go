@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -101,7 +101,7 @@ func toVerbIcon(ok bool) string {
 	if ok {
 		return "[green::b] ✓ [::]"
 	}
-	return "[orangered::b] 𐄂 [::]"
+	return "[orangered::b] × [::]"
 }
 
 func hasVerb(verbs []string, verb string) bool {
@@ -164,7 +164,7 @@ func (rr Rules) Upsert(r RuleRes) Rules {
 	return rr
 }
 
-// Find locates a row by id. Retturns false is not found.
+// Find locates a row by id. Returns false is not found.
 func (rr Rules) find(res string) (int, bool) {
 	for i, r := range rr {
 		if r.Resource == res {

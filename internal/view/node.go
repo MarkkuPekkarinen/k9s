@@ -11,7 +11,7 @@ import (
 	"github.com/derailed/k9s/internal/dao"
 	"github.com/derailed/k9s/internal/ui"
 	"github.com/derailed/k9s/internal/ui/dialog"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/rs/zerolog/log"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -26,31 +26,38 @@ func NewNode(gvr client.GVR) ResourceViewer {
 	n := Node{
 		ResourceViewer: NewBrowser(gvr),
 	}
-	n.SetBindKeysFn(n.bindKeys)
+	n.AddBindKeysFn(n.bindKeys)
 	n.GetTable().SetEnterFn(n.showPods)
 
 	return &n
 }
 
-func (n *Node) bindKeys(aa ui.KeyActions) {
-	aa.Delete(ui.KeySpace, tcell.KeyCtrlSpace, tcell.KeyCtrlD)
+func (n *Node) bindDangerousKeys(aa ui.KeyActions) {
 	aa.Add(ui.KeyActions{
-		ui.KeyY:      ui.NewKeyAction("YAML", n.yamlCmd, true),
-		ui.KeyC:      ui.NewKeyAction("Cordon", n.toggleCordonCmd(true), true),
-		ui.KeyU:      ui.NewKeyAction("Uncordon", n.toggleCordonCmd(false), true),
-		ui.KeyR:      ui.NewKeyAction("Drain", n.drainCmd, true),
-		ui.KeyShiftC: ui.NewKeyAction("Sort CPU", n.GetTable().SortColCmd(cpuCol, false), false),
-		ui.KeyShiftM: ui.NewKeyAction("Sort MEM", n.GetTable().SortColCmd(memCol, false), false),
-		ui.KeyShiftX: ui.NewKeyAction("Sort CPU%", n.GetTable().SortColCmd("%CPU", false), false),
-		ui.KeyShiftZ: ui.NewKeyAction("Sort MEM%", n.GetTable().SortColCmd("%MEM", false), false),
+		ui.KeyC: ui.NewKeyAction("Cordon", n.toggleCordonCmd(true), true),
+		ui.KeyU: ui.NewKeyAction("Uncordon", n.toggleCordonCmd(false), true),
+		ui.KeyR: ui.NewKeyAction("Drain", n.drainCmd, true),
 	})
-
 	cl := n.App().Config.K9s.CurrentCluster
 	if n.App().Config.K9s.Clusters[cl].FeatureGates.NodeShell {
 		aa.Add(ui.KeyActions{
 			ui.KeyS: ui.NewKeyAction("Shell", n.sshCmd, true),
 		})
 	}
+}
+
+func (n *Node) bindKeys(aa ui.KeyActions) {
+	aa.Delete(ui.KeySpace, tcell.KeyCtrlSpace)
+
+	if !n.App().Config.K9s.IsReadOnly() {
+		n.bindDangerousKeys(aa)
+	}
+
+	aa.Add(ui.KeyActions{
+		ui.KeyY:      ui.NewKeyAction("YAML", n.yamlCmd, true),
+		ui.KeyShiftC: ui.NewKeyAction("Sort CPU", n.GetTable().SortColCmd(cpuCol, false), false),
+		ui.KeyShiftM: ui.NewKeyAction("Sort MEM", n.GetTable().SortColCmd(memCol, false), false),
+	})
 }
 
 func (n *Node) showPods(a *App, _ ui.Tabular, _, path string) {
@@ -66,7 +73,7 @@ func (n *Node) drainCmd(evt *tcell.EventKey) *tcell.EventKey {
 	defaults := dao.DrainOptions{
 		GracePeriodSeconds:  -1,
 		Timeout:             5 * time.Second,
-		DeleteLocalData:     false,
+		DeleteEmptyDirData:  false,
 		IgnoreAllDaemonSets: false,
 	}
 	ShowDrain(n, path, defaults, drainNode)
@@ -175,7 +182,7 @@ func (n *Node) yamlCmd(evt *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 
-	raw, err := dao.ToYAML(o)
+	raw, err := dao.ToYAML(o, false)
 	if err != nil {
 		n.App().Flash().Errf("Unable to marshal resource %s", err)
 		return nil

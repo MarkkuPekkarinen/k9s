@@ -7,7 +7,7 @@ import (
 	"github.com/derailed/k9s/internal/config"
 	"github.com/derailed/k9s/internal/ui"
 	"github.com/derailed/k9s/internal/ui/dialog"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/rs/zerolog/log"
 )
 
@@ -67,7 +67,7 @@ func hotKeyActions(r Runner, aa ui.KeyActions) {
 		}
 		_, ok := aa[key]
 		if ok {
-			log.Warn().Err(fmt.Errorf("HOT-KEY Doh! you are trying to overide an existing command `%s", k)).Msg("Invalid shortcut")
+			log.Warn().Err(fmt.Errorf("HOT-KEY Doh! you are trying to override an existing command `%s", k)).Msg("Invalid shortcut")
 			continue
 		}
 		aa[key] = ui.NewSharedKeyAction(
@@ -104,7 +104,7 @@ func pluginActions(r Runner, aa ui.KeyActions) {
 		}
 		_, ok := aa[key]
 		if ok {
-			log.Warn().Err(fmt.Errorf("Doh! you are trying to overide an existing command `%s", k)).Msg("Invalid shortcut")
+			log.Warn().Err(fmt.Errorf("Doh! you are trying to override an existing command `%s", k)).Msg("Invalid shortcut")
 			continue
 		}
 		aa[key] = ui.NewKeyAction(

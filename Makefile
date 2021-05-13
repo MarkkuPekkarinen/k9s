@@ -2,8 +2,8 @@ NAME    := k9s
 PACKAGE := github.com/derailed/$(NAME)
 GIT     := $(shell git rev-parse --short HEAD)
 SOURCE_DATE_EPOCH ?= $(shell date +%s)
-DATE    := $(shell date -u -d @${SOURCE_DATE_EPOCH} +%FT%T%Z)
-VERSION  ?= v0.21.7
+DATE    := $(shell date -u -d @${SOURCE_DATE_EPOCH} +"%Y-%m-%dT%H:%M:%SZ")
+VERSION  ?= v0.24.9
 IMG_NAME := derailed/k9s
 IMAGE    := ${IMG_NAME}:${VERSION}
 
@@ -11,7 +11,6 @@ default: help
 
 test:   ## Run all tests
 	@go clean --testcache && go test ./...
-
 
 cover:  ## Run test coverage suite
 	@go test ./... --coverprofile=cov.out
@@ -21,6 +20,9 @@ build:  ## Builds the CLI
 	@go build \
 	-ldflags "-w -s -X ${PACKAGE}/cmd.version=${VERSION} -X ${PACKAGE}/cmd.commit=${GIT} -X ${PACKAGE}/cmd.date=${DATE}" \
 	-a -tags netgo -o execs/${NAME} main.go
+
+kubectl-stable-version:  ## Get kubectl latest stable version
+	@curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt
 
 img:    ## Build Docker Image
 	@docker build --rm -t ${IMAGE} .

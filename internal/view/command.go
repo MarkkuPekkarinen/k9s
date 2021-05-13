@@ -86,10 +86,10 @@ func (c *Command) xrayCmd(cmd string) error {
 	}
 	gvr, ok := c.alias.AsGVR(tokens[1])
 	if !ok {
-		return fmt.Errorf("Huh? `%s` command not found", cmd)
+		return fmt.Errorf("`%s` command not found", cmd)
 	}
 	if !allowedXRay(gvr) {
-		return fmt.Errorf("Huh? `%s` command not found", cmd)
+		return fmt.Errorf("`%s` command not found", cmd)
 	}
 
 	x := NewXray(gvr)
@@ -139,7 +139,7 @@ func (c *Command) run(cmd, path string, clearStack bool) error {
 			return err
 		}
 		if !c.alias.Check(cmds[0]) {
-			return fmt.Errorf("Huh? `%s` Command not found", cmd)
+			return fmt.Errorf("`%s` Command not found", cmd)
 		}
 		return c.exec(cmd, gvr, c.componentFor(gvr, path, v), clearStack)
 	}
@@ -155,9 +155,11 @@ func (c *Command) defaultCmd() error {
 	}
 	tokens := strings.Split(view, " ")
 	cmd := view
-	ns, err := c.app.Conn().Config().CurrentNamespaceName()
-	if err == nil && !isContextCmd(tokens[0]) {
-		cmd = tokens[0] + " " + ns
+	if len(tokens) == 1 || c.app.Conn().Config().OverrideNS {
+		ns, err := c.app.Conn().Config().CurrentNamespaceName()
+		if err == nil && !isContextCmd(tokens[0]) {
+			cmd = tokens[0] + " " + ns
+		}
 	}
 
 	if err := c.run(cmd, "", true); err != nil {
@@ -210,7 +212,7 @@ func (c *Command) specialCmd(cmd, path string) bool {
 func (c *Command) viewMetaFor(cmd string) (string, *MetaViewer, error) {
 	gvr, ok := c.alias.AsGVR(cmd)
 	if !ok {
-		return "", nil, fmt.Errorf("Huh? `%s` command not found", cmd)
+		return "", nil, fmt.Errorf("`%s` command not found", cmd)
 	}
 
 	v, ok := customViewers[gvr]
@@ -240,6 +242,7 @@ func (c *Command) componentFor(gvr, path string, v *MetaViewer) ResourceViewer {
 func (c *Command) exec(cmd, gvr string, comp model.Component, clearStack bool) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
+			log.Error().Msgf("Something bad happened! %#v", e)
 			c.app.Content.Dump()
 			log.Debug().Msgf("History %v", c.app.cmdHistory.List())
 

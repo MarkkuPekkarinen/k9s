@@ -13,7 +13,7 @@ import (
 	"github.com/derailed/k9s/internal/perf"
 	"github.com/derailed/k9s/internal/render"
 	"github.com/derailed/k9s/internal/ui"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/rs/zerolog/log"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -35,7 +35,7 @@ func NewService(gvr client.GVR) ResourceViewer {
 			NewLogsExtender(NewBrowser(gvr), nil),
 		),
 	}
-	s.SetBindKeysFn(s.bindKeys)
+	s.AddBindKeysFn(s.bindKeys)
 	s.GetTable().SetEnterFn(s.showPods)
 
 	return &s
@@ -76,7 +76,7 @@ func (s *Service) getExternalPort(svc *v1.Service) (string, error) {
 	}
 	ports := render.ToPorts(svc.Spec.Ports)
 	pp := strings.Split(ports, " ")
-	// Grap the first port pair for now...
+	// Grab the first port pair for now...
 	tokens := strings.Split(pp[0], "►")
 	if len(tokens) < 2 {
 		return "", errors.New("No ports pair found")
