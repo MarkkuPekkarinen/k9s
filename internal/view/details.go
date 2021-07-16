@@ -75,6 +75,10 @@ func (d *Details) Init(_ context.Context) error {
 	return nil
 }
 
+func (d *Details) InCmdMode() bool {
+	return d.cmdBuff.InCmdMode()
+}
+
 // TextChanged notifies the model changed.
 func (d *Details) TextChanged(lines []string) {
 	d.text.SetText(colorizeYAML(d.app.Styles.Views().Yaml, strings.Join(lines, "\n")))
@@ -160,7 +164,7 @@ func (d *Details) SetSubject(s string) {
 	d.subject = s
 }
 
-// Actions returns menu actions
+// Actions returns menu actions.
 func (d *Details) Actions() ui.KeyActions {
 	return d.actions
 }

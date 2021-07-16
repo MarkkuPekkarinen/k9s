@@ -80,6 +80,10 @@ func (v *LiveView) Init(_ context.Context) error {
 	return nil
 }
 
+func (v *LiveView) InCmdMode() bool {
+	return v.cmdBuff.InCmdMode()
+}
+
 // ResourceFailed notifies when their is an issue.
 func (v *LiveView) ResourceFailed(err error) {
 	v.text.SetTextAlign(tview.AlignCenter)
@@ -147,7 +151,7 @@ func (v *LiveView) bindKeys() {
 	}
 }
 
-// ToggleRefreshCmd is used for pausing the refreshing of data on config map and secrets
+// ToggleRefreshCmd is used for pausing the refreshing of data on config map and secrets.
 func (v *LiveView) toggleRefreshCmd(evt *tcell.EventKey) *tcell.EventKey {
 	v.autoRefresh = !v.autoRefresh
 	if v.autoRefresh {
@@ -177,7 +181,7 @@ func (v *LiveView) StylesChanged(s *config.Styles) {
 	v.ResourceChanged(v.model.Peek(), nil)
 }
 
-// Actions returns menu actions
+// Actions returns menu actions.
 func (v *LiveView) Actions() ui.KeyActions {
 	return v.actions
 }

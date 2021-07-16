@@ -15,7 +15,6 @@ import (
 	"github.com/derailed/k9s/internal/ui"
 	"github.com/derailed/tview"
 	"github.com/gdamore/tcell/v2"
-	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -60,9 +59,12 @@ func (h *Help) Init(ctx context.Context) error {
 	return nil
 }
 
+func (*Help) InCmdMode() bool {
+	return false
+}
+
 // StylesChanged notifies skin changed.
 func (h *Help) StylesChanged(s *config.Styles) {
-	log.Debug().Msgf("CHANGED!")
 	h.styles = s
 	h.SetBackgroundColor(s.BgColor())
 	h.updateStyle()
@@ -100,16 +102,14 @@ func (h *Help) computeExtraMaxes(ee map[string]string) {
 }
 
 func (h *Help) build() {
-	log.Debug().Msgf("BUILD!!")
 	h.Clear()
 
-	sections := []string{"RESOURCE", "GENERAL", "NAVIGATION", "HELP"}
+	sections := []string{"RESOURCE", "GENERAL", "NAVIGATION"}
 	h.maxRows = len(h.showGeneral())
 	ff := []HelpFunc{
 		h.hints,
 		h.showGeneral,
 		h.showNav,
-		h.showHelp,
 	}
 
 	var col int
@@ -127,7 +127,6 @@ func (h *Help) build() {
 		}
 		col += 2
 	}
-
 	if hh, err := h.showHotKeys(); err == nil {
 		h.computeMaxes(hh)
 		h.addSection(col, "HOTKEYS", hh)
@@ -148,19 +147,6 @@ func (h *Help) addExtras(extras map[string]string, col, size int) {
 	}
 }
 
-func (h *Help) showHelp() model.MenuHints {
-	return model.MenuHints{
-		{
-			Mnemonic:    "?",
-			Description: "Help",
-		},
-		{
-			Mnemonic:    "Ctrl-a",
-			Description: "Aliases",
-		},
-	}
-}
-
 func (h *Help) showNav() model.MenuHints {
 	return model.MenuHints{
 		{
@@ -173,7 +159,8 @@ func (h *Help) showNav() model.MenuHints {
 		},
 		{
 			Mnemonic:    "Ctrl-b",
-			Description: "Page Up"},
+			Description: "Page Up",
+		},
 		{
 			Mnemonic:    "Ctrl-f",
 			Description: "Page Down",
@@ -220,6 +207,14 @@ func (h *Help) showHotKeys() (model.MenuHints, error) {
 
 func (h *Help) showGeneral() model.MenuHints {
 	return model.MenuHints{
+		{
+			Mnemonic:    "?",
+			Description: "Help",
+		},
+		{
+			Mnemonic:    "Ctrl-a",
+			Description: "Aliases",
+		},
 		{
 			Mnemonic:    ":cmd",
 			Description: "Command mode",

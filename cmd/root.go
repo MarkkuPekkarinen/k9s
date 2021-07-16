@@ -41,7 +41,7 @@ func init() {
 	initK8sFlags()
 }
 
-// Execute root command
+// Execute root command.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		log.Panic().Err(err)
@@ -292,8 +292,4 @@ func initCertFlags() {
 		"",
 		"Bearer token for authentication to the API server",
 	)
-}
-
-func isBoolSet(b *bool) bool {
-	return b != nil && *b
 }
