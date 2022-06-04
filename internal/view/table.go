@@ -2,6 +2,7 @@ package view
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/atotto/clipboard"
@@ -52,9 +53,18 @@ func (t *Table) Init(ctx context.Context) (err error) {
 	return nil
 }
 
-func (t *Table) HeaderIndex(header string) (int, bool) {
+// HeaderIndex returns index of a given column or false if not found.
+func (t *Table) HeaderIndex(colName string) (int, bool) {
 	for i := 0; i < t.GetColumnCount(); i++ {
-		if h := t.GetCell(0, i); h != nil && h.Text == header {
+		h := t.GetCell(0, i)
+		if h == nil {
+			continue
+		}
+		s := h.Text
+		if idx := strings.Index(s, "["); idx > 0 {
+			s = s[:idx]
+		}
+		if s == colName {
 			return i, true
 		}
 	}
@@ -106,6 +116,9 @@ func (t *Table) defaultEnv() Env {
 	if env["FILTER"] == "" {
 		env["NAMESPACE"], env["FILTER"] = client.Namespaced(path)
 	}
+	env["RESOURCE_GROUP"] = t.GVR().G()
+	env["RESOURCE_VERSION"] = t.GVR().V()
+	env["RESOURCE_NAME"] = t.GVR().R()
 
 	return env
 }
@@ -137,14 +150,14 @@ func (t *Table) SetEnterFn(f EnterFunc) {
 func (t *Table) SetExtraActionsFn(BoostActionsFunc) {}
 
 // BufferCompleted indicates input was accepted.
-func (t *Table) BufferCompleted(s string) {
+func (t *Table) BufferCompleted(text, _ string) {
 	t.app.QueueUpdateDraw(func() {
-		t.Filter(s)
+		t.Filter(text)
 	})
 }
 
 // BufferChanged indicates the buffer was changed.
-func (t *Table) BufferChanged(s string) {}
+func (t *Table) BufferChanged(_, _ string) {}
 
 // BufferActive indicates the buff activity changed.
 func (t *Table) BufferActive(state bool, k model.BufferKind) {
@@ -155,7 +168,7 @@ func (t *Table) BufferActive(state bool, k model.BufferKind) {
 }
 
 func (t *Table) saveCmd(evt *tcell.EventKey) *tcell.EventKey {
-	if path, err := saveTable(t.app.Config.K9s.CurrentCluster, t.GVR().R(), t.Path, t.GetFilteredData()); err != nil {
+	if path, err := saveTable(t.app.Config.K9s.GetScreenDumpDir(), t.app.Config.K9s.CurrentCluster, t.GVR().R(), t.Path, t.GetFilteredData()); err != nil {
 		t.app.Flash().Err(err)
 	} else {
 		t.app.Flash().Infof("File %s saved successfully!", path)

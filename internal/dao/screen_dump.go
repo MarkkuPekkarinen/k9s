@@ -3,12 +3,12 @@ package dao
 import (
 	"context"
 	"errors"
-	"io/ioutil"
 	"os"
 	"regexp"
 
 	"github.com/derailed/k9s/internal"
 	"github.com/derailed/k9s/internal/render"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -17,7 +17,7 @@ var (
 	_ Nuker    = (*ScreenDump)(nil)
 
 	// InvalidCharsRX contains invalid filename characters.
-	invalidPathCharsRX = regexp.MustCompile(`[:/\\]+`)
+	invalidPathCharsRX = regexp.MustCompile(`[:]+`)
 )
 
 // ScreenDump represents a scraped resources.
@@ -26,7 +26,7 @@ type ScreenDump struct {
 }
 
 // Delete a ScreenDump.
-func (d *ScreenDump) Delete(path string, cascade, force bool) error {
+func (d *ScreenDump) Delete(path string, _ *metav1.DeletionPropagation, force bool) error {
 	return os.Remove(path)
 }
 
@@ -37,14 +37,16 @@ func (d *ScreenDump) List(ctx context.Context, _ string) ([]runtime.Object, erro
 		return nil, errors.New("no screendump dir found in context")
 	}
 
-	ff, err := ioutil.ReadDir(SanitizeFilename(dir))
+	ff, err := os.ReadDir(SanitizeFilename(dir))
 	if err != nil {
 		return nil, err
 	}
 
 	oo := make([]runtime.Object, len(ff))
 	for i, f := range ff {
-		oo[i] = render.FileRes{File: f, Dir: dir}
+		if fi, err := f.Info(); err == nil {
+			oo[i] = render.FileRes{File: fi, Dir: dir}
+		}
 	}
 
 	return oo, nil

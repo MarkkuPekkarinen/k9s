@@ -15,6 +15,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -59,10 +60,10 @@ type buffL struct {
 	changed int
 }
 
-func (b *buffL) BufferChanged(s string) {
+func (b *buffL) BufferChanged(_, _ string) {
 	b.changed++
 }
-func (b *buffL) BufferCompleted(s string) {}
+func (b *buffL) BufferCompleted(_, _ string) {}
 
 func (b *buffL) BufferActive(state bool, kind model.BufferKind) {
 	b.active++
@@ -88,8 +89,8 @@ func (k ks) CurrentNamespaceName() (string, error) {
 	return "test", nil
 }
 
-func (k ks) ClusterNames() ([]string, error) {
-	return []string{"test"}, nil
+func (k ks) ClusterNames() (map[string]struct{}, error) {
+	return map[string]struct{}{"test": {}}, nil
 }
 
 func (k ks) NamespaceNames(nn []v1.Namespace) []string {
@@ -110,6 +111,7 @@ func (t *mockModel) ClearSuggestions()                  {}
 func (t *mockModel) SetInstance(string)                 {}
 func (t *mockModel) SetLabelFilter(string)              {}
 func (t *mockModel) Empty() bool                        { return false }
+func (t *mockModel) Count() int                         { return 1 }
 func (t *mockModel) HasMetrics() bool                   { return true }
 func (t *mockModel) Peek() render.TableData             { return makeTableData() }
 func (t *mockModel) ClusterWide() bool                  { return false }
@@ -124,7 +126,7 @@ func (t *mockModel) Get(context.Context, string) (runtime.Object, error) {
 	return nil, nil
 }
 
-func (t *mockModel) Delete(context.Context, string, bool, bool) error {
+func (t *mockModel) Delete(context.Context, string, *metav1.DeletionPropagation, bool) error {
 	return nil
 }
 

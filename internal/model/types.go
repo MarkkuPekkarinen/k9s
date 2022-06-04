@@ -68,7 +68,9 @@ type Primitive interface {
 	Name() string
 }
 
+// Commander tracks prompt status.
 type Commander interface {
+	// InCmdMode checks if prompt is active.
 	InCmdMode() bool
 }
 
@@ -82,6 +84,9 @@ type Component interface {
 
 // Renderer represents a resource renderer.
 type Renderer interface {
+	// IsGeneric identifies a generic handler.
+	IsGeneric() bool
+
 	// Render converts raw resources to tabular data.
 	Render(o interface{}, ns string, row *render.Row) error
 

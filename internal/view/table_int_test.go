@@ -2,7 +2,7 @@ package view
 
 import (
 	"context"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -16,6 +16,7 @@ import (
 	"github.com/derailed/tview"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -24,11 +25,11 @@ func TestTableSave(t *testing.T) {
 	v.Init(makeContext())
 	v.SetTitle("k9s-test")
 
-	dir := filepath.Join(config.K9sDumpDir, v.app.Config.K9s.CurrentCluster)
-	c1, _ := ioutil.ReadDir(dir)
+	dir := filepath.Join(v.app.Config.K9s.GetScreenDumpDir(), v.app.Config.K9s.CurrentCluster)
+	c1, _ := os.ReadDir(dir)
 	v.saveCmd(nil)
 
-	c2, _ := ioutil.ReadDir(dir)
+	c2, _ := os.ReadDir(dir)
 	assert.Equal(t, len(c2), len(c1)+1)
 }
 
@@ -67,7 +68,7 @@ func TestTableViewFilter(t *testing.T) {
 	v.SetModel(&mockTableModel{})
 	v.Refresh()
 	v.CmdBuff().SetActive(true)
-	v.CmdBuff().SetText("blee")
+	v.CmdBuff().SetText("blee", "")
 
 	assert.Equal(t, 3, v.GetRowCount())
 }
@@ -95,6 +96,7 @@ var _ ui.Tabular = (*mockTableModel)(nil)
 func (t *mockTableModel) SetInstance(string)                 {}
 func (t *mockTableModel) SetLabelFilter(string)              {}
 func (t *mockTableModel) Empty() bool                        { return false }
+func (t *mockTableModel) Count() int                         { return 1 }
 func (t *mockTableModel) HasMetrics() bool                   { return true }
 func (t *mockTableModel) Peek() render.TableData             { return makeTableData() }
 func (t *mockTableModel) Refresh(context.Context) error      { return nil }
@@ -109,7 +111,7 @@ func (t *mockTableModel) Get(context.Context, string) (runtime.Object, error) {
 	return nil, nil
 }
 
-func (t *mockTableModel) Delete(context.Context, string, bool, bool) error {
+func (t *mockTableModel) Delete(context.Context, string, *metav1.DeletionPropagation, bool) error {
 	return nil
 }
 
@@ -171,8 +173,8 @@ func (k ks) CurrentNamespaceName() (string, error) {
 	return "test", nil
 }
 
-func (k ks) ClusterNames() ([]string, error) {
-	return []string{"test"}, nil
+func (k ks) ClusterNames() (map[string]struct{}, error) {
+	return map[string]struct{}{"test": {}}, nil
 }
 
 func (k ks) NamespaceNames(nn []v1.Namespace) []string {

@@ -75,6 +75,7 @@ func (d *Details) Init(_ context.Context) error {
 	return nil
 }
 
+// InCmdMode checks if prompt is active.
 func (d *Details) InCmdMode() bool {
 	return d.cmdBuff.InCmdMode()
 }
@@ -106,11 +107,11 @@ func (d *Details) TextFiltered(lines []string, matches fuzzy.Matches) {
 }
 
 // BufferChanged indicates the buffer was changed.
-func (d *Details) BufferChanged(s string) {}
+func (d *Details) BufferChanged(_, _ string) {}
 
 // BufferCompleted indicates input was accepted.
-func (d *Details) BufferCompleted(s string) {
-	d.model.Filter(s)
+func (d *Details) BufferCompleted(text, _ string) {
+	d.model.Filter(text)
 	d.updateTitle()
 }
 
@@ -214,6 +215,11 @@ func (d *Details) toggleFullScreenCmd(evt *tcell.EventKey) *tcell.EventKey {
 	d.fullScreen = !d.fullScreen
 	d.SetFullScreen(d.fullScreen)
 	d.Box.SetBorder(!d.fullScreen)
+	if d.fullScreen {
+		d.Box.SetBorderPadding(0, 0, 0, 0)
+	} else {
+		d.Box.SetBorderPadding(0, 0, 1, 1)
+	}
 
 	return nil
 }
@@ -277,7 +283,7 @@ func (d *Details) resetCmd(evt *tcell.EventKey) *tcell.EventKey {
 }
 
 func (d *Details) saveCmd(evt *tcell.EventKey) *tcell.EventKey {
-	if path, err := saveYAML(d.app.Config.K9s.CurrentCluster, d.title, d.text.GetText(true)); err != nil {
+	if path, err := saveYAML(d.app.Config.K9s.GetScreenDumpDir(), d.app.Config.K9s.CurrentCluster, d.title, d.text.GetText(true)); err != nil {
 		d.app.Flash().Err(err)
 	} else {
 		d.app.Flash().Infof("Log %s saved successfully!", path)

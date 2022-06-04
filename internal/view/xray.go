@@ -92,6 +92,7 @@ func (x *Xray) Init(ctx context.Context) error {
 	return nil
 }
 
+// InCmdMode checks if prompt is active.
 func (*Xray) InCmdMode() bool {
 	return false
 }
@@ -557,12 +558,12 @@ func (x *Xray) SetEnvFn(EnvFunc) {}
 func (x *Xray) Refresh() {}
 
 // BufferCompleted indicates the buffer was changed.
-func (x *Xray) BufferCompleted(s string) {
+func (x *Xray) BufferCompleted(_, _ string) {
 	x.update(x.filter(x.model.Peek()))
 }
 
 // BufferChanged indicates the buffer was changed.
-func (x *Xray) BufferChanged(s string) {}
+func (x *Xray) BufferChanged(_, _ string) {}
 
 // BufferActive indicates the buff activity changed.
 func (x *Xray) BufferActive(state bool, k model.BufferKind) {
@@ -656,7 +657,7 @@ func (x *Xray) styleTitle() string {
 }
 
 func (x *Xray) resourceDelete(gvr client.GVR, spec *xray.NodeSpec, msg string) {
-	dialog.ShowDelete(x.app.Styles.Dialog(), x.app.Content.Pages, msg, func(cascade, force bool) {
+	dialog.ShowDelete(x.app.Styles.Dialog(), x.app.Content.Pages, msg, func(propagation *metav1.DeletionPropagation, force bool) {
 		x.app.Flash().Infof("Delete resource %s %s", spec.GVR(), spec.Path())
 		accessor, err := dao.AccessorFor(x.app.factory, gvr)
 		if err != nil {
@@ -669,7 +670,7 @@ func (x *Xray) resourceDelete(gvr client.GVR, spec *xray.NodeSpec, msg string) {
 			x.app.Flash().Errf("Invalid nuker %T", accessor)
 			return
 		}
-		if err := nuker.Delete(spec.Path(), true, true); err != nil {
+		if err := nuker.Delete(spec.Path(), nil, true); err != nil {
 			x.app.Flash().Errf("Delete failed with `%s", err)
 		} else {
 			x.app.Flash().Infof("%s `%s deleted successfully", x.GVR(), spec.Path())

@@ -11,6 +11,7 @@ import (
 	"github.com/derailed/k9s/internal/config"
 	"github.com/derailed/k9s/internal/render"
 	"github.com/rs/zerolog/log"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -25,7 +26,7 @@ type PortForward struct {
 }
 
 // Delete a portforward.
-func (p *PortForward) Delete(path string, cascade, force bool) error {
+func (p *PortForward) Delete(path string, _ *metav1.DeletionPropagation, force bool) error {
 	p.Factory.DeleteForwarder(path)
 
 	return nil
@@ -41,7 +42,7 @@ func (p *PortForward) List(ctx context.Context, _ string) ([]runtime.Object, err
 
 	config, err := config.NewBench(benchFile)
 	if err != nil {
-		log.Debug().Msgf("No custom benchmark config file found")
+		log.Warn().Msgf("No custom benchmark config file found")
 	}
 
 	ff, cc := p.Factory.Forwarders(), config.Benchmarks.Containers
