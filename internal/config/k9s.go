@@ -18,7 +18,9 @@ type K9s struct {
 	Logoless            bool                `yaml:"logoless"`
 	Crumbsless          bool                `yaml:"crumbsless"`
 	ReadOnly            bool                `yaml:"readOnly"`
+	NoExitOnCtrlC       bool                `yaml:"noExitOnCtrlC"`
 	NoIcons             bool                `yaml:"noIcons"`
+	SkipLatestRevCheck  bool                `yaml:"skipLatestRevCheck"`
 	Logger              *Logger             `yaml:"logger"`
 	CurrentContext      string              `yaml:"currentContext"`
 	CurrentCluster      string              `yaml:"currentCluster"`
@@ -44,6 +46,10 @@ func NewK9s() *K9s {
 		Thresholds:    NewThreshold(),
 		ScreenDumpDir: K9sDefaultScreenDumpDir,
 	}
+}
+
+func (k *K9s) CurrentContextDir() string {
+	return SanitizeFilename(k.CurrentContext)
 }
 
 // ActivateCluster initializes the active cluster is not present.
@@ -166,7 +172,6 @@ func (k *K9s) ActiveCluster() *Cluster {
 
 func (k *K9s) GetScreenDumpDir() string {
 	screenDumpDir := k.ScreenDumpDir
-
 	if k.manualScreenDumpDir != nil && *k.manualScreenDumpDir != "" {
 		screenDumpDir = *k.manualScreenDumpDir
 	}

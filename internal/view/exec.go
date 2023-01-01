@@ -45,7 +45,7 @@ func runK(a *App, opts shellOpts) bool {
 		log.Error().Err(err).Msgf("kubectl command is not in your path")
 		return false
 	}
-	var args []string
+	args := []string{opts.args[0]}
 	if u, err := a.Conn().Config().ImpersonateUser(); err == nil {
 		args = append(args, "--as", u)
 	}
@@ -60,7 +60,7 @@ func runK(a *App, opts shellOpts) bool {
 		args = append(args, "--kubeconfig", *cfg)
 	}
 	if len(args) > 0 {
-		opts.args = append(args, opts.args...)
+		opts.args = append(args, opts.args[1:]...)
 	}
 	opts.binary, opts.background = bin, false
 
@@ -184,7 +184,7 @@ func clearScreen() {
 const (
 	k9sShell           = "k9s-shell"
 	k9sShellRetryCount = 10
-	k9sShellRetryDelay = 1 * time.Second
+	k9sShellRetryDelay = 10 * time.Second
 )
 
 func ssh(a *App, node string) error {
@@ -331,6 +331,7 @@ func k9sShellPod(node string, cfg *config.ShellPod) v1.Pod {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      k9sShellPodName(),
 			Namespace: cfg.Namespace,
+			Labels:    cfg.Labels,
 		},
 		Spec: v1.PodSpec{
 			NodeName:                      node,
@@ -367,7 +368,7 @@ func asResource(r config.Limits) v1.ResourceRequirements {
 	}
 }
 
-func pipe(ctx context.Context, opts shellOpts, cmds ...*exec.Cmd) error {
+func pipe(_ context.Context, opts shellOpts, cmds ...*exec.Cmd) error {
 	if len(cmds) == 0 {
 		return nil
 	}
