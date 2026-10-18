@@ -1,17 +1,18 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Authors of K9s
+
 package config
 
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
+	"github.com/derailed/k9s/internal/config/data"
+	"github.com/derailed/k9s/internal/config/json"
 	"github.com/derailed/tcell/v2"
 	"github.com/derailed/tview"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
-
-// K9sStylesFile represents K9s skins file location.
-var K9sStylesFile = filepath.Join(K9sHome(), "skin.yml")
 
 // StyleListener represents a skin's listener.
 type StyleListener interface {
@@ -19,243 +20,247 @@ type StyleListener interface {
 	StylesChanged(*Styles)
 }
 
+// TextStyle tracks text styles.
+type TextStyle string
+
+const (
+	// TextStyleNormal is the default text style.
+	TextStyleNormal TextStyle = "normal"
+
+	// TextStyleBold is the bold text style.
+	TextStyleBold TextStyle = "bold"
+
+	// TextStyleDim is the dim text style.
+	TextStyleDim TextStyle = "dim"
+
+	// Default color palette values used to build the default skin.
+	colorBlack        = "black"
+	colorWhite        = "white"
+	colorAqua         = "aqua"
+	colorCadetBlue    = "cadetblue"
+	colorDodgerBlue   = "dodgerblue"
+	colorFuchsia      = "fuchsia"
+	colorGreen        = "green"
+	colorLightSkyBlue = "lightskyblue"
+	colorOrange       = "orange"
+)
+
+// ToShortString returns a short string representation of the text style.
+func (ts TextStyle) ToShortString() string {
+	switch ts {
+	case TextStyleNormal:
+		return "-"
+	case TextStyleBold:
+		return "b"
+	case TextStyleDim:
+		return "d"
+	default:
+		return "d"
+	}
+}
+
 type (
-	// Color represents a color.
-	Color string
-
-	// Colors tracks multiple colors.
-	Colors []Color
-
 	// Styles tracks K9s styling options.
 	Styles struct {
-		K9s       Style `yaml:"k9s"`
+		K9s       Style `json:"k9s" yaml:"k9s"`
 		listeners []StyleListener
 	}
 
 	// Style tracks K9s styles.
 	Style struct {
-		Body   Body   `yaml:"body"`
-		Prompt Prompt `yaml:"prompt"`
-		Help   Help   `yaml:"help"`
-		Frame  Frame  `yaml:"frame"`
-		Info   Info   `yaml:"info"`
-		Views  Views  `yaml:"views"`
-		Dialog Dialog `yaml:"dialog"`
+		Body   Body   `json:"body" yaml:"body"`
+		Prompt Prompt `json:"prompt" yaml:"prompt"`
+		Help   Help   `json:"help" yaml:"help"`
+		Frame  Frame  `json:"frame" yaml:"frame"`
+		Info   Info   `json:"info" yaml:"info"`
+		Views  Views  `json:"views" yaml:"views"`
+		Dialog Dialog `json:"dialog" yaml:"dialog"`
 	}
 
 	// Prompt tracks command styles
 	Prompt struct {
-		FgColor      Color `yaml:"fgColor"`
-		BgColor      Color `yaml:"bgColor"`
-		SuggestColor Color `yaml:"suggestColor"`
+		FgColor      Color        `json:"fgColor" yaml:"fgColor"`
+		BgColor      Color        `json:"bgColor" yaml:"bgColor"`
+		SuggestColor Color        `json:"" yaml:"suggestColor"`
+		Border       PromptBorder `json:"" yaml:"border"`
+	}
+
+	// PromptBorder tracks the color of the prompt depending on its kind (e.g., command or filter)
+	PromptBorder struct {
+		CommandColor Color `json:"command" yaml:"command"`
+		DefaultColor Color `json:"default" yaml:"default"`
 	}
 
 	// Help tracks help styles.
 	Help struct {
-		FgColor      Color `yaml:"fgColor"`
-		BgColor      Color `yaml:"bgColor"`
-		SectionColor Color `yaml:"sectionColor"`
-		KeyColor     Color `yaml:"keyColor"`
-		NumKeyColor  Color `yaml:"numKeyColor"`
+		FgColor      Color `json:"fgColor" yaml:"fgColor"`
+		BgColor      Color `json:"bgColor" yaml:"bgColor"`
+		SectionColor Color `json:"sectionColor" yaml:"sectionColor"`
+		KeyColor     Color `json:"keyColor" yaml:"keyColor"`
+		NumKeyColor  Color `json:"numKeyColor" yaml:"numKeyColor"`
 	}
 
 	// Body tracks body styles.
 	Body struct {
-		FgColor        Color `yaml:"fgColor"`
-		BgColor        Color `yaml:"bgColor"`
-		LogoColor      Color `yaml:"logoColor"`
-		LogoColorMsg   Color `yaml:"logoColorMsg"`
-		LogoColorInfo  Color `yaml:"logoColorInfo"`
-		LogoColorWarn  Color `yaml:"logoColorWarn"`
-		LogoColorError Color `yaml:"logoColorError"`
+		FgColor        Color `json:"fgColor" yaml:"fgColor"`
+		BgColor        Color `json:"bgColor" yaml:"bgColor"`
+		LogoColor      Color `json:"logoColor" yaml:"logoColor"`
+		LogoColorMsg   Color `json:"logoColorMsg" yaml:"logoColorMsg"`
+		LogoColorInfo  Color `json:"logoColorInfo" yaml:"logoColorInfo"`
+		LogoColorWarn  Color `json:"logoColorWarn" yaml:"logoColorWarn"`
+		LogoColorError Color `json:"logoColorError" yaml:"logoColorError"`
 	}
 
 	// Dialog tracks dialog styles.
 	Dialog struct {
-		FgColor            Color `yaml:"fgColor"`
-		BgColor            Color `yaml:"bgColor"`
-		ButtonFgColor      Color `yaml:"buttonFgColor"`
-		ButtonBgColor      Color `yaml:"buttonBgColor"`
-		ButtonFocusFgColor Color `yaml:"buttonFocusFgColor"`
-		ButtonFocusBgColor Color `yaml:"buttonFocusBgColor"`
-		LabelFgColor       Color `yaml:"labelFgColor"`
-		FieldFgColor       Color `yaml:"fieldFgColor"`
+		FgColor            Color `json:"fgColor" yaml:"fgColor"`
+		BgColor            Color `json:"bgColor" yaml:"bgColor"`
+		ButtonFgColor      Color `json:"buttonFgColor" yaml:"buttonFgColor"`
+		ButtonBgColor      Color `json:"buttonBgColor" yaml:"buttonBgColor"`
+		ButtonFocusFgColor Color `json:"buttonFocusFgColor" yaml:"buttonFocusFgColor"`
+		ButtonFocusBgColor Color `json:"buttonFocusBgColor" yaml:"buttonFocusBgColor"`
+		LabelFgColor       Color `json:"labelFgColor" yaml:"labelFgColor"`
+		FieldFgColor       Color `json:"fieldFgColor" yaml:"fieldFgColor"`
 	}
 
 	// Frame tracks frame styles.
 	Frame struct {
-		Title  Title  `yaml:"title"`
-		Border Border `yaml:"border"`
-		Menu   Menu   `yaml:"menu"`
-		Crumb  Crumb  `yaml:"crumbs"`
-		Status Status `yaml:"status"`
+		Title  Title  `json:"title" yaml:"title"`
+		Border Border `json:"border" yaml:"border"`
+		Menu   Menu   `json:"menu" yaml:"menu"`
+		Crumb  Crumb  `json:"crumbs" yaml:"crumbs"`
+		Status Status `json:"status" yaml:"status"`
 	}
 
 	// Views tracks individual view styles.
 	Views struct {
-		Table  Table  `yaml:"table"`
-		Xray   Xray   `yaml:"xray"`
-		Charts Charts `yaml:"charts"`
-		Yaml   Yaml   `yaml:"yaml"`
-		Log    Log    `yaml:"logs"`
+		Table  Table  `json:"table" yaml:"table"`
+		Xray   Xray   `json:"xray" yaml:"xray"`
+		Charts Charts `json:"charts" yaml:"charts"`
+		Yaml   Yaml   `json:"yaml" yaml:"yaml"`
+		Picker Picker `json:"picker" yaml:"picker"`
+		Log    Log    `json:"logs" yaml:"logs"`
 	}
 
 	// Status tracks resource status styles.
 	Status struct {
-		NewColor       Color `yaml:"newColor"`
-		ModifyColor    Color `yaml:"modifyColor"`
-		AddColor       Color `yaml:"addColor"`
-		PendingColor   Color `yaml:"pendingColor"`
-		ErrorColor     Color `yaml:"errorColor"`
-		HighlightColor Color `yaml:"highlightColor"`
-		KillColor      Color `yaml:"killColor"`
-		CompletedColor Color `yaml:"completedColor"`
+		NewColor       Color `json:"newColor" yaml:"newColor"`
+		ModifyColor    Color `json:"modifyColor" yaml:"modifyColor"`
+		AddColor       Color `json:"addColor" yaml:"addColor"`
+		PendingColor   Color `json:"pendingColor" yaml:"pendingColor"`
+		ErrorColor     Color `json:"errorColor" yaml:"errorColor"`
+		HighlightColor Color `json:"highlightColor" yaml:"highlightColor"`
+		KillColor      Color `json:"killColor" yaml:"killColor"`
+		CompletedColor Color `json:"completedColor" yaml:"completedColor"`
 	}
 
 	// Log tracks Log styles.
 	Log struct {
-		FgColor   Color        `yaml:"fgColor"`
-		BgColor   Color        `yaml:"bgColor"`
-		Indicator LogIndicator `yaml:"indicator"`
+		FgColor   Color        `json:"fgColor" yaml:"fgColor"`
+		BgColor   Color        `json:"bgColor" yaml:"bgColor"`
+		Indicator LogIndicator `json:"indicator" yaml:"indicator"`
+	}
+
+	// Picker tracks color when selecting containers
+	Picker struct {
+		MainColor     Color `json:"mainColor" yaml:"mainColor"`
+		FocusColor    Color `json:"focusColor" yaml:"focusColor"`
+		ShortcutColor Color `json:"shortcutColor" yaml:"shortcutColor"`
 	}
 
 	// LogIndicator tracks log view indicator.
 	LogIndicator struct {
-		FgColor        Color `yaml:"fgColor"`
-		BgColor        Color `yaml:"bgColor"`
-		ToggleOnColor  Color `yaml:"toggleOnColor"`
-		ToggleOffColor Color `yaml:"toggleOffColor"`
+		FgColor        Color `json:"fgColor" yaml:"fgColor"`
+		BgColor        Color `json:"bgColor" yaml:"bgColor"`
+		ToggleOnColor  Color `json:"toggleOnColor" yaml:"toggleOnColor"`
+		ToggleOffColor Color `json:"toggleOffColor" yaml:"toggleOffColor"`
 	}
 
 	// Yaml tracks yaml styles.
 	Yaml struct {
-		KeyColor   Color `yaml:"keyColor"`
-		ValueColor Color `yaml:"valueColor"`
-		ColonColor Color `yaml:"colonColor"`
+		KeyColor   Color `json:"keyColor" yaml:"keyColor"`
+		ValueColor Color `json:"valueColor" yaml:"valueColor"`
+		ColonColor Color `json:"colonColor" yaml:"colonColor"`
 	}
 
 	// Title tracks title styles.
 	Title struct {
-		FgColor        Color `yaml:"fgColor"`
-		BgColor        Color `yaml:"bgColor"`
-		HighlightColor Color `yaml:"highlightColor"`
-		CounterColor   Color `yaml:"counterColor"`
-		FilterColor    Color `yaml:"filterColor"`
+		FgColor        Color `json:"fgColor" yaml:"fgColor"`
+		BgColor        Color `json:"bgColor" yaml:"bgColor"`
+		HighlightColor Color `json:"highlightColor" yaml:"highlightColor"`
+		CounterColor   Color `json:"counterColor" yaml:"counterColor"`
+		FilterColor    Color `json:"filterColor" yaml:"filterColor"`
 	}
 
 	// Info tracks info styles.
 	Info struct {
-		SectionColor Color `yaml:"sectionColor"`
-		FgColor      Color `yaml:"fgColor"`
+		SectionColor Color `json:"sectionColor" yaml:"sectionColor"`
+		FgColor      Color `json:"fgColor" yaml:"fgColor"`
+		CPUColor     Color `json:"cpuColor" yaml:"cpuColor"`
+		MEMColor     Color `json:"memColor" yaml:"memColor"`
+		K9sRevColor  Color `json:"k9sRevColor" yaml:"k9sRevColor"`
 	}
 
 	// Border tracks border styles.
 	Border struct {
-		FgColor    Color `yaml:"fgColor"`
-		FocusColor Color `yaml:"focusColor"`
+		FgColor    Color `json:"fgColor" yaml:"fgColor"`
+		FocusColor Color `json:"focusColor" yaml:"focusColor"`
 	}
 
 	// Crumb tracks crumbs styles.
 	Crumb struct {
-		FgColor     Color `yaml:"fgColor"`
-		BgColor     Color `yaml:"bgColor"`
-		ActiveColor Color `yaml:"activeColor"`
+		FgColor     Color `json:"fgColor" yaml:"fgColor"`
+		BgColor     Color `json:"bgColor" yaml:"bgColor"`
+		ActiveColor Color `json:"activeColor" yaml:"activeColor"`
 	}
 
 	// Table tracks table styles.
 	Table struct {
-		FgColor       Color       `yaml:"fgColor"`
-		BgColor       Color       `yaml:"bgColor"`
-		CursorFgColor Color       `yaml:"cursorFgColor"`
-		CursorBgColor Color       `yaml:"cursorBgColor"`
-		MarkColor     Color       `yaml:"markColor"`
-		Header        TableHeader `yaml:"header"`
+		FgColor       Color       `json:"fgColor" yaml:"fgColor"`
+		BgColor       Color       `json:"bgColor" yaml:"bgColor"`
+		CursorFgColor Color       `json:"cursorFgColor" yaml:"cursorFgColor"`
+		CursorBgColor Color       `json:"cursorBgColor" yaml:"cursorBgColor"`
+		MarkColor     Color       `json:"markColor" yaml:"markColor"`
+		Header        TableHeader `json:"header" yaml:"header"`
 	}
 
 	// TableHeader tracks table header styles.
 	TableHeader struct {
-		FgColor     Color `yaml:"fgColor"`
-		BgColor     Color `yaml:"bgColor"`
-		SorterColor Color `yaml:"sorterColor"`
+		FgColor                 Color `json:"fgColor" yaml:"fgColor"`
+		BgColor                 Color `json:"bgColor" yaml:"bgColor"`
+		SorterColor             Color `json:"sorterColor" yaml:"sorterColor"`
+		SelectedSortColumnColor Color `json:"selectedSortColumnColor" yaml:"selectedSortColumnColor"`
 	}
 
 	// Xray tracks xray styles.
 	Xray struct {
-		FgColor         Color `yaml:"fgColor"`
-		BgColor         Color `yaml:"bgColor"`
-		CursorColor     Color `yaml:"cursorColor"`
-		CursorTextColor Color `yaml:"cursorTextColor"`
-		GraphicColor    Color `yaml:"graphicColor"`
+		FgColor         Color `json:"fgColor" yaml:"fgColor"`
+		BgColor         Color `json:"bgColor" yaml:"bgColor"`
+		CursorColor     Color `json:"cursorColor" yaml:"cursorColor"`
+		CursorTextColor Color `json:"cursorTextColor" yaml:"cursorTextColor"`
+		GraphicColor    Color `json:"graphicColor" yaml:"graphicColor"`
 	}
 
 	// Menu tracks menu styles.
 	Menu struct {
-		FgColor     Color `yaml:"fgColor"`
-		KeyColor    Color `yaml:"keyColor"`
-		NumKeyColor Color `yaml:"numKeyColor"`
+		FgColor     Color     `json:"fgColor" yaml:"fgColor"`
+		FgStyle     TextStyle `json:"fgStyle" yaml:"fgStyle"`
+		KeyColor    Color     `json:"keyColor" yaml:"keyColor"`
+		NumKeyColor Color     `json:"numKeyColor" yaml:"numKeyColor"`
 	}
 
 	// Charts tracks charts styles.
 	Charts struct {
-		BgColor            Color             `yaml:"bgColor"`
-		DialBgColor        Color             `yaml:"dialBgColor"`
-		ChartBgColor       Color             `yaml:"chartBgColor"`
-		DefaultDialColors  Colors            `yaml:"defaultDialColors"`
-		DefaultChartColors Colors            `yaml:"defaultChartColors"`
-		ResourceColors     map[string]Colors `yaml:"resourceColors"`
+		BgColor            Color             `json:"bgColor" yaml:"bgColor"`
+		DialBgColor        Color             `json:"dialBgColor" yaml:"dialBgColor"`
+		ChartBgColor       Color             `json:"chartBgColor" yaml:"chartBgColor"`
+		DefaultDialColors  Colors            `json:"defaultDialColors" yaml:"defaultDialColors"`
+		DefaultChartColors Colors            `json:"defaultChartColors" yaml:"defaultChartColors"`
+		ResourceColors     map[string]Colors `json:"resourceColors" yaml:"resourceColors"`
+		FocusFgColor       Color             `yaml:"focusFgColor"`
+		FocusBgColor       Color             `yaml:"focusBgColor"`
 	}
 )
-
-const (
-	// DefaultColor represents  a default color.
-	DefaultColor Color = "default"
-
-	// TransparentColor represents the terminal bg color.
-	TransparentColor Color = "-"
-)
-
-// NewColor returns a new color.
-func NewColor(c string) Color {
-	return Color(c)
-}
-
-// String returns color as string.
-func (c Color) String() string {
-	if c.isHex() {
-		return string(c)
-	}
-	if c == DefaultColor {
-		return "-"
-	}
-	col := c.Color().TrueColor().Hex()
-	if col < 0 {
-		return "-"
-	}
-
-	return fmt.Sprintf("#%06x", col)
-}
-
-func (c Color) isHex() bool {
-	return len(c) == 7 && c[0] == '#'
-}
-
-// Color returns a view color.
-func (c Color) Color() tcell.Color {
-	if c == DefaultColor {
-		return tcell.ColorDefault
-	}
-
-	return tcell.GetColor(string(c)).TrueColor()
-}
-
-// Colors converts series string colors to colors.
-func (c Colors) Colors() []tcell.Color {
-	cc := make([]tcell.Color, 0, len(c))
-	for _, color := range c {
-		cc = append(cc, color.Color())
-	}
-	return cc
-}
 
 func newStyle() Style {
 	return Style{
@@ -271,36 +276,42 @@ func newStyle() Style {
 
 func newDialog() Dialog {
 	return Dialog{
-		FgColor:            "cadetblue",
-		BgColor:            "black",
+		FgColor:            colorCadetBlue,
+		BgColor:            colorBlack,
 		ButtonBgColor:      "darkslateblue",
-		ButtonFgColor:      "black",
-		ButtonFocusBgColor: "dodgerblue",
-		ButtonFocusFgColor: "black",
-		LabelFgColor:       "white",
-		FieldFgColor:       "white",
+		ButtonFgColor:      colorBlack,
+		ButtonFocusBgColor: colorDodgerBlue,
+		ButtonFocusFgColor: colorBlack,
+		LabelFgColor:       colorWhite,
+		FieldFgColor:       colorWhite,
 	}
 }
 
 func newPrompt() Prompt {
 	return Prompt{
-		FgColor:      "cadetblue",
-		BgColor:      "black",
-		SuggestColor: "dodgerblue",
+		FgColor:      colorCadetBlue,
+		BgColor:      colorBlack,
+		SuggestColor: colorDodgerBlue,
+		Border: PromptBorder{
+			DefaultColor: "seagreen",
+			CommandColor: colorAqua,
+		},
 	}
 }
 
 func newCharts() Charts {
 	return Charts{
-		BgColor:            "black",
-		DialBgColor:        "black",
-		ChartBgColor:       "black",
+		BgColor:            colorBlack,
+		DialBgColor:        colorBlack,
+		ChartBgColor:       colorBlack,
 		DefaultDialColors:  Colors{Color("palegreen"), Color("orangered")},
 		DefaultChartColors: Colors{Color("palegreen"), Color("orangered")},
 		ResourceColors: map[string]Colors{
-			"cpu": {Color("dodgerblue"), Color("darkslateblue")},
-			"mem": {Color("yellow"), Color("goldenrod")},
+			CPU: {Color(colorDodgerBlue), Color("darkslateblue")},
+			MEM: {Color("yellow"), Color("goldenrod")},
 		},
+		FocusFgColor: colorWhite,
+		FocusBgColor: colorOrange,
 	}
 }
 
@@ -310,6 +321,7 @@ func newViews() Views {
 		Xray:   newXray(),
 		Charts: newCharts(),
 		Yaml:   newYaml(),
+		Picker: newPicker(),
 		Log:    newLog(),
 	}
 }
@@ -326,21 +338,21 @@ func newFrame() Frame {
 
 func newHelp() Help {
 	return Help{
-		FgColor:      "cadetblue",
-		BgColor:      "black",
-		SectionColor: "green",
-		KeyColor:     "dodgerblue",
-		NumKeyColor:  "fuchsia",
+		FgColor:      colorCadetBlue,
+		BgColor:      colorBlack,
+		SectionColor: colorGreen,
+		KeyColor:     colorDodgerBlue,
+		NumKeyColor:  colorFuchsia,
 	}
 }
 
 func newBody() Body {
 	return Body{
-		FgColor:        "cadetblue",
-		BgColor:        "black",
-		LogoColor:      "orange",
-		LogoColorMsg:   "white",
-		LogoColorInfo:  "green",
+		FgColor:        colorCadetBlue,
+		BgColor:        colorBlack,
+		LogoColor:      colorOrange,
+		LogoColorMsg:   colorWhite,
+		LogoColorInfo:  colorGreen,
 		LogoColorWarn:  "mediumvioletred",
 		LogoColorError: "red",
 	}
@@ -348,29 +360,37 @@ func newBody() Body {
 
 func newStatus() Status {
 	return Status{
-		NewColor:       "lightskyblue",
+		NewColor:       colorLightSkyBlue,
 		ModifyColor:    "greenyellow",
-		AddColor:       "dodgerblue",
+		AddColor:       colorDodgerBlue,
 		PendingColor:   "darkorange",
 		ErrorColor:     "orangered",
-		HighlightColor: "aqua",
+		HighlightColor: colorAqua,
 		KillColor:      "mediumpurple",
 		CompletedColor: "lightslategray",
 	}
 }
 
+func newPicker() Picker {
+	return Picker{
+		MainColor:     colorWhite,
+		FocusColor:    colorAqua,
+		ShortcutColor: colorAqua,
+	}
+}
+
 func newLog() Log {
 	return Log{
-		FgColor:   "lightskyblue",
-		BgColor:   "black",
+		FgColor:   colorLightSkyBlue,
+		BgColor:   colorBlack,
 		Indicator: newLogIndicator(),
 	}
 }
 
 func newLogIndicator() LogIndicator {
 	return LogIndicator{
-		FgColor:        "dodgerblue",
-		BgColor:        "black",
+		FgColor:        colorDodgerBlue,
+		BgColor:        colorBlack,
 		ToggleOnColor:  "limegreen",
 		ToggleOffColor: "gray",
 	}
@@ -379,16 +399,16 @@ func newLogIndicator() LogIndicator {
 func newYaml() Yaml {
 	return Yaml{
 		KeyColor:   "steelblue",
-		ColonColor: "white",
+		ColonColor: colorWhite,
 		ValueColor: "papayawhip",
 	}
 }
 
 func newTitle() Title {
 	return Title{
-		FgColor:        "aqua",
-		BgColor:        "black",
-		HighlightColor: "fuchsia",
+		FgColor:        colorAqua,
+		BgColor:        colorBlack,
+		HighlightColor: colorFuchsia,
 		CounterColor:   "papayawhip",
 		FilterColor:    "seagreen",
 	}
@@ -396,27 +416,30 @@ func newTitle() Title {
 
 func newInfo() Info {
 	return Info{
-		SectionColor: "white",
-		FgColor:      "orange",
+		SectionColor: colorWhite,
+		FgColor:      colorOrange,
+		CPUColor:     "lawngreen",
+		MEMColor:     "darkturquoise",
+		K9sRevColor:  colorAqua,
 	}
 }
 
 func newXray() Xray {
 	return Xray{
-		FgColor:         "aqua",
-		BgColor:         "black",
-		CursorColor:     "dodgerblue",
-		CursorTextColor: "black",
-		GraphicColor:    "cadetblue",
+		FgColor:         colorAqua,
+		BgColor:         colorBlack,
+		CursorColor:     colorDodgerBlue,
+		CursorTextColor: colorBlack,
+		GraphicColor:    colorCadetBlue,
 	}
 }
 
 func newTable() Table {
 	return Table{
-		FgColor:       "aqua",
-		BgColor:       "black",
-		CursorFgColor: "black",
-		CursorBgColor: "aqua",
+		FgColor:       colorAqua,
+		BgColor:       colorBlack,
+		CursorFgColor: colorBlack,
+		CursorBgColor: colorAqua,
 		MarkColor:     "palegreen",
 		Header:        newTableHeader(),
 	}
@@ -424,50 +447,56 @@ func newTable() Table {
 
 func newTableHeader() TableHeader {
 	return TableHeader{
-		FgColor:     "white",
-		BgColor:     "black",
-		SorterColor: "aqua",
+		FgColor:                 colorWhite,
+		BgColor:                 colorBlack,
+		SorterColor:             colorAqua,
+		SelectedSortColumnColor: colorLightSkyBlue,
 	}
 }
 
 func newCrumb() Crumb {
 	return Crumb{
-		FgColor:     "black",
-		BgColor:     "aqua",
-		ActiveColor: "orange",
+		FgColor:     colorBlack,
+		BgColor:     colorAqua,
+		ActiveColor: colorOrange,
 	}
 }
 
 func newBorder() Border {
 	return Border{
-		FgColor:    "dodgerblue",
-		FocusColor: "lightskyblue",
+		FgColor:    colorDodgerBlue,
+		FocusColor: colorLightSkyBlue,
 	}
 }
 
 func newMenu() Menu {
 	return Menu{
-		FgColor:     "white",
-		KeyColor:    "dodgerblue",
-		NumKeyColor: "fuchsia",
+		FgColor:     colorWhite,
+		KeyColor:    colorDodgerBlue,
+		NumKeyColor: colorFuchsia,
 	}
 }
 
 // NewStyles creates a new default config.
 func NewStyles() *Styles {
+	var s Styles
+	if err := yaml.Unmarshal(stockSkinTpl, &s); err == nil {
+		return &s
+	}
+
 	return &Styles{
 		K9s: newStyle(),
 	}
 }
 
 // Reset resets styles.
-func (s *Styles) Reset() {
-	s.K9s = newStyle()
-}
-
-// DefaultSkin loads the default skin.
-func (s *Styles) DefaultSkin() {
-	s.K9s = newStyle()
+func (s *Styles) Reset(invert bool) {
+	if err := yaml.Unmarshal(stockSkinTpl, s); err != nil {
+		s.K9s = newStyle()
+	}
+	if invert {
+		s.K9s.Invert()
+	}
 }
 
 // FgColor returns the foreground color.
@@ -511,6 +540,11 @@ func (s *Styles) Body() Body {
 	return s.K9s.Body
 }
 
+// Prompt returns prompt styles.
+func (s *Styles) Prompt() Prompt {
+	return s.K9s.Prompt
+}
+
 // Frame returns frame styles.
 func (s *Styles) Frame() Frame {
 	return s.K9s.Frame
@@ -551,17 +585,218 @@ func (s *Styles) Views() Views {
 	return s.K9s.Views
 }
 
+// Invert inverts all colors in the Style.
+func (s *Style) Invert() {
+	s.Body.Invert()
+	s.Prompt.Invert()
+	s.Help.Invert()
+	s.Frame.Invert()
+	s.Info.Invert()
+	s.Views.Invert()
+	s.Dialog.Invert()
+}
+
+// Invert inverts all colors in Body.
+func (b *Body) Invert() {
+	b.FgColor = b.FgColor.InvertColor()
+	b.BgColor = b.BgColor.InvertColor()
+	b.LogoColor = b.LogoColor.InvertColor()
+	b.LogoColorMsg = b.LogoColorMsg.InvertColor()
+	b.LogoColorInfo = b.LogoColorInfo.InvertColor()
+	b.LogoColorWarn = b.LogoColorWarn.InvertColor()
+	b.LogoColorError = b.LogoColorError.InvertColor()
+}
+
+// Invert inverts all colors in Prompt.
+func (p *Prompt) Invert() {
+	p.FgColor = p.FgColor.InvertColor()
+	p.BgColor = p.BgColor.InvertColor()
+	p.SuggestColor = p.SuggestColor.InvertColor()
+	p.Border.Invert()
+}
+
+// Invert inverts all colors in PromptBorder.
+func (p *PromptBorder) Invert() {
+	p.CommandColor = p.CommandColor.InvertColor()
+	p.DefaultColor = p.DefaultColor.InvertColor()
+}
+
+// Invert inverts all colors in Help.
+func (h *Help) Invert() {
+	h.FgColor = h.FgColor.InvertColor()
+	h.BgColor = h.BgColor.InvertColor()
+	h.SectionColor = h.SectionColor.InvertColor()
+	h.KeyColor = h.KeyColor.InvertColor()
+	h.NumKeyColor = h.NumKeyColor.InvertColor()
+}
+
+// Invert inverts all colors in Dialog.
+func (d *Dialog) Invert() {
+	d.FgColor = d.FgColor.InvertColor()
+	d.BgColor = d.BgColor.InvertColor()
+	d.ButtonFgColor = d.ButtonFgColor.InvertColor()
+	d.ButtonBgColor = d.ButtonBgColor.InvertColor()
+	d.ButtonFocusFgColor = d.ButtonFocusFgColor.InvertColor()
+	d.ButtonFocusBgColor = d.ButtonFocusBgColor.InvertColor()
+	d.LabelFgColor = d.LabelFgColor.InvertColor()
+	d.FieldFgColor = d.FieldFgColor.InvertColor()
+}
+
+// Invert inverts all colors in Frame.
+func (f *Frame) Invert() {
+	f.Title.Invert()
+	f.Border.Invert()
+	f.Menu.Invert()
+	f.Crumb.Invert()
+	f.Status.Invert()
+}
+
+// Invert inverts all colors in Title.
+func (t *Title) Invert() {
+	t.FgColor = t.FgColor.InvertColor()
+	t.BgColor = t.BgColor.InvertColor()
+	t.HighlightColor = t.HighlightColor.InvertColor()
+	t.CounterColor = t.CounterColor.InvertColor()
+	t.FilterColor = t.FilterColor.InvertColor()
+}
+
+// Invert inverts all colors in Border.
+func (b *Border) Invert() {
+	b.FgColor = b.FgColor.InvertColor()
+	b.FocusColor = b.FocusColor.InvertColor()
+}
+
+// Invert inverts all colors in Menu.
+func (m *Menu) Invert() {
+	m.FgColor = m.FgColor.InvertColor()
+	m.KeyColor = m.KeyColor.InvertColor()
+	m.NumKeyColor = m.NumKeyColor.InvertColor()
+}
+
+// Invert inverts all colors in Crumb.
+func (c *Crumb) Invert() {
+	c.FgColor = c.FgColor.InvertColor()
+	c.BgColor = c.BgColor.InvertColor()
+	c.ActiveColor = c.ActiveColor.InvertColor()
+}
+
+// Invert inverts all colors in Status.
+func (s *Status) Invert() {
+	s.NewColor = s.NewColor.InvertColor()
+	s.ModifyColor = s.ModifyColor.InvertColor()
+	s.AddColor = s.AddColor.InvertColor()
+	s.PendingColor = s.PendingColor.InvertColor()
+	s.ErrorColor = s.ErrorColor.InvertColor()
+	s.HighlightColor = s.HighlightColor.InvertColor()
+	s.KillColor = s.KillColor.InvertColor()
+	s.CompletedColor = s.CompletedColor.InvertColor()
+}
+
+// Invert inverts all colors in Info.
+func (i *Info) Invert() {
+	i.SectionColor = i.SectionColor.InvertColor()
+	i.FgColor = i.FgColor.InvertColor()
+	i.CPUColor = i.CPUColor.InvertColor()
+	i.MEMColor = i.MEMColor.InvertColor()
+	i.K9sRevColor = i.K9sRevColor.InvertColor()
+}
+
+// Invert inverts all colors in Views.
+func (v *Views) Invert() {
+	v.Table.Invert()
+	v.Xray.Invert()
+	v.Charts.Invert()
+	v.Yaml.Invert()
+	v.Picker.Invert()
+	v.Log.Invert()
+}
+
+// Invert inverts all colors in Table.
+func (t *Table) Invert() {
+	t.FgColor = t.FgColor.InvertColor()
+	t.BgColor = t.BgColor.InvertColor()
+	t.CursorFgColor = t.CursorFgColor.InvertColor()
+	t.CursorBgColor = t.CursorBgColor.InvertColor()
+	t.MarkColor = t.MarkColor.InvertColor()
+	t.Header.Invert()
+}
+
+// Invert inverts all colors in TableHeader.
+func (t *TableHeader) Invert() {
+	t.FgColor = t.FgColor.InvertColor()
+	t.BgColor = t.BgColor.InvertColor()
+	t.SorterColor = t.SorterColor.InvertColor()
+	t.SelectedSortColumnColor = t.SelectedSortColumnColor.InvertColor()
+}
+
+// Invert inverts all colors in Xray.
+func (x *Xray) Invert() {
+	x.FgColor = x.FgColor.InvertColor()
+	x.BgColor = x.BgColor.InvertColor()
+	x.CursorColor = x.CursorColor.InvertColor()
+	x.CursorTextColor = x.CursorTextColor.InvertColor()
+	x.GraphicColor = x.GraphicColor.InvertColor()
+}
+
+// Invert inverts all colors in Charts.
+func (c *Charts) Invert() {
+	c.BgColor = c.BgColor.InvertColor()
+	c.DialBgColor = c.DialBgColor.InvertColor()
+	c.ChartBgColor = c.ChartBgColor.InvertColor()
+	c.FocusFgColor = c.FocusFgColor.InvertColor()
+	c.FocusBgColor = c.FocusBgColor.InvertColor()
+	c.DefaultDialColors = c.DefaultDialColors.Invert()
+	c.DefaultChartColors = c.DefaultChartColors.Invert()
+	for k, v := range c.ResourceColors {
+		c.ResourceColors[k] = v.Invert()
+	}
+}
+
+// Invert inverts all colors in Yaml.
+func (y *Yaml) Invert() {
+	y.KeyColor = y.KeyColor.InvertColor()
+	y.ValueColor = y.ValueColor.InvertColor()
+	y.ColonColor = y.ColonColor.InvertColor()
+}
+
+// Invert inverts all colors in Picker.
+func (p *Picker) Invert() {
+	p.MainColor = p.MainColor.InvertColor()
+	p.FocusColor = p.FocusColor.InvertColor()
+	p.ShortcutColor = p.ShortcutColor.InvertColor()
+}
+
+// Invert inverts all colors in Log.
+func (l *Log) Invert() {
+	l.FgColor = l.FgColor.InvertColor()
+	l.BgColor = l.BgColor.InvertColor()
+	l.Indicator.Invert()
+}
+
+// Invert inverts all colors in LogIndicator.
+func (l *LogIndicator) Invert() {
+	l.FgColor = l.FgColor.InvertColor()
+	l.BgColor = l.BgColor.InvertColor()
+	l.ToggleOnColor = l.ToggleOnColor.InvertColor()
+	l.ToggleOffColor = l.ToggleOffColor.InvertColor()
+}
+
 // Load K9s configuration from file.
-func (s *Styles) Load(path string) error {
-	f, err := os.ReadFile(path)
+func (s *Styles) Load(path string, invert bool) error {
+	bb, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-
-	if err := yaml.Unmarshal(f, s); err != nil {
+	if err := data.JSONValidator.Validate(json.SkinSchema, bb); err != nil {
 		return err
 	}
-	// s.fireStylesChanged()
+	if err := yaml.Unmarshal(bb, s); err != nil {
+		return err
+	}
+
+	if invert {
+		s.K9s.Invert()
+	}
 
 	return nil
 }
@@ -582,4 +817,10 @@ func (s *Styles) Update() {
 	tview.Styles.ContrastSecondaryTextColor = s.FgColor()
 
 	s.fireStylesChanged()
+}
+
+// Dump for debug.
+func (s *Styles) Dump() {
+	bb, _ := yaml.Marshal(s)
+	fmt.Println(string(bb))
 }

@@ -1,13 +1,17 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Authors of K9s
+
 package view
 
 import (
 	"fmt"
+	"log/slog"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/rs/zerolog/log"
+	"github.com/derailed/k9s/internal/slogs"
 )
 
 // Env represent K9s and K8s available environment variables.
@@ -47,16 +51,24 @@ func (e Env) Substitute(arg string) (string, error) {
 		key, inverse := keyFromSubmatch(m)
 		v, ok := e[strings.ToUpper(key)]
 		if !ok {
-			log.Warn().Msgf("no k9s environment matching key %q:%q", m[0], key)
+			slog.Warn("No k9s environment matching key",
+				slogs.Matches, matches,
+				slogs.Key, key,
+			)
 			continue
 		}
-		if b, err := strconv.ParseBool(v); err == nil {
-			if inverse {
-				b = !b
+		// Only treat value as boolean if it is NOT a valid number.
+		// strconv.ParseBool also accepts "0" and "1", which would
+		// corrupt numeric plugin input values like $INPUT_REPLICAS.
+		if _, numErr := strconv.ParseFloat(v, 64); numErr != nil {
+			if b, err := strconv.ParseBool(v); err == nil {
+				if inverse {
+					b = !b
+				}
+				v = fmt.Sprintf("%t", b)
 			}
-			v = fmt.Sprintf("%t", b)
 		}
-		arg = strings.Replace(arg, m[0], v, -1)
+		arg = strings.ReplaceAll(arg, m[0], v)
 	}
 
 	return arg, nil

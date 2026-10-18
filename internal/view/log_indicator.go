@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Authors of K9s
+
 package view
 
 import (
@@ -6,7 +9,6 @@ import (
 
 	"github.com/derailed/k9s/internal/config"
 	"github.com/derailed/tview"
-	"github.com/rs/zerolog/log"
 )
 
 const spacer = "     "
@@ -23,6 +25,7 @@ type LogIndicator struct {
 	showTime                   bool
 	allContainers              bool
 	shouldDisplayAllContainers bool
+	columnLock                 bool
 }
 
 // NewLogIndicator returns a new indicator.
@@ -32,11 +35,17 @@ func NewLogIndicator(cfg *config.Config, styles *config.Styles, allContainers bo
 		TextView:                   tview.NewTextView(),
 		indicator:                  make([]byte, 0, 100),
 		scrollStatus:               1,
-		fullScreen:                 cfg.K9s.Logger.FullScreenLogs,
+		fullScreen:                 cfg.K9s.UI.DefaultsToFullScreen,
 		textWrap:                   cfg.K9s.Logger.TextWrap,
 		showTime:                   cfg.K9s.Logger.ShowTime,
 		shouldDisplayAllContainers: allContainers,
+		columnLock:                 cfg.K9s.Logger.ColumnLock,
 	}
+
+	if cfg.K9s.Logger.DisableAutoscroll {
+		l.scrollStatus = 0
+	}
+
 	l.StylesChanged(styles)
 	styles.AddListener(&l)
 	l.SetTextAlign(tview.AlignCenter)
@@ -57,6 +66,11 @@ func (l *LogIndicator) AutoScroll() bool {
 	return atomic.LoadInt32(&l.scrollStatus) == 1
 }
 
+// ColumnLock reports the current column lock mode.
+func (l *LogIndicator) ColumnLock() bool {
+	return l.columnLock
+}
+
 // Timestamp reports the current timestamp mode.
 func (l *LogIndicator) Timestamp() bool {
 	return l.showTime
@@ -70,6 +84,11 @@ func (l *LogIndicator) TextWrap() bool {
 // FullScreen reports the current screen mode.
 func (l *LogIndicator) FullScreen() bool {
 	return l.fullScreen
+}
+
+// ToggleColumnLock toggles the current column lock mode.
+func (l *LogIndicator) ToggleColumnLock() {
+	l.columnLock = !l.columnLock
 }
 
 // ToggleTimestamp toggles the current timestamp mode.
@@ -134,6 +153,12 @@ func (l *LogIndicator) Refresh() {
 		l.indicator = append(l.indicator, fmt.Sprintf(toggleOffFmt, "Autoscroll", spacer)...)
 	}
 
+	if l.ColumnLock() {
+		l.indicator = append(l.indicator, fmt.Sprintf(toggleOnFmt, "ColumnLock", spacer)...)
+	} else {
+		l.indicator = append(l.indicator, fmt.Sprintf(toggleOffFmt, "ColumnLock", spacer)...)
+	}
+
 	if l.FullScreen() {
 		l.indicator = append(l.indicator, fmt.Sprintf(toggleOnFmt, "FullScreen", spacer)...)
 	} else {
@@ -151,8 +176,6 @@ func (l *LogIndicator) Refresh() {
 	} else {
 		l.indicator = append(l.indicator, fmt.Sprintf(toggleOffFmt, "Wrap", "")...)
 	}
-
-	log.Debug().Msgf("INDICATOR: %q", l.indicator)
 
 	_, _ = l.Write(l.indicator)
 }

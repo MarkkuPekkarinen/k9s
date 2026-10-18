@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Authors of K9s
+
 package ui
 
 import (
@@ -15,7 +18,7 @@ import (
 )
 
 const (
-	menuIndexFmt = " [key:-:b]<%d> [fg:-:d]%s "
+	menuIndexFmt = " [key:-:b]<%d> [fg:-:fgstyle]%s "
 	maxRows      = 6
 )
 
@@ -44,8 +47,8 @@ func NewMenu(styles *config.Styles) *Menu {
 func (m *Menu) StylesChanged(s *config.Styles) {
 	m.styles = s
 	m.SetBackgroundColor(s.BgColor())
-	for row := 0; row < m.GetRowCount(); row++ {
-		for col := 0; col < m.GetColumnCount(); col++ {
+	for row := range m.GetRowCount() {
+		for col := range m.GetColumnCount() {
 			if c := m.GetCell(row, col); c != nil {
 				c.BackgroundColor = s.BgColor()
 			}
@@ -59,7 +62,7 @@ func (m *Menu) StackPushed(c model.Component) {
 }
 
 // StackPopped notifies a component was removed.
-func (m *Menu) StackPopped(o, top model.Component) {
+func (m *Menu) StackPopped(_, top model.Component) {
 	if top != nil {
 		m.HydrateMenu(top.Hints())
 	} else {
@@ -82,15 +85,15 @@ func (m *Menu) HydrateMenu(hh model.MenuHints) {
 	if m.hasDigits(hh) {
 		colCount++
 	}
-	for row := 0; row < maxRows; row++ {
+	for row := range maxRows {
 		table[row] = make(model.MenuHints, colCount)
 	}
 	t := m.buildMenuTable(hh, table, colCount)
 
-	for row := 0; row < len(t); row++ {
-		for col := 0; col < len(t[row]); col++ {
+	for row := range t {
+		for col := range len(t[row]) {
 			c := tview.NewTableCell(t[row][col])
-			if len(t[row][col]) == 0 {
+			if t[row][col] == "" {
 				c = tview.NewTableCell("")
 			}
 			c.SetBackgroundColor(m.styles.BgColor())
@@ -99,7 +102,7 @@ func (m *Menu) HydrateMenu(hh model.MenuHints) {
 	}
 }
 
-func (m *Menu) hasDigits(hh model.MenuHints) bool {
+func (*Menu) hasDigits(hh model.MenuHints) bool {
 	for _, h := range hh {
 		if !h.Visible {
 			continue
@@ -148,7 +151,7 @@ func (m *Menu) buildMenuTable(hh model.MenuHints, table []model.MenuHints, colCo
 func (m *Menu) layout(table []model.MenuHints, mm []int, out [][]string) {
 	for r := range table {
 		for c := range table[r] {
-			out[r][c] = keyConv(m.formatMenu(table[r][c], mm[c]))
+			out[r][c] = m.formatMenu(table[r][c], mm[c])
 		}
 	}
 }
@@ -157,22 +160,22 @@ func (m *Menu) formatMenu(h model.MenuHint, size int) string {
 	if h.Mnemonic == "" || h.Description == "" {
 		return ""
 	}
+	styles := m.styles.Frame()
 	i, err := strconv.Atoi(h.Mnemonic)
 	if err == nil {
-		return formatNSMenu(i, h.Description, m.styles.Frame())
+		return formatNSMenu(i, h.Description, &styles)
 	}
 
-	return formatPlainMenu(h, size, m.styles.Frame())
+	return formatPlainMenu(h, size, &styles)
 }
 
 // ----------------------------------------------------------------------------
 // Helpers...
 
 func keyConv(s string) string {
-	if !strings.Contains(s, "alt") {
+	if s == "" || !strings.Contains(s, "alt") {
 		return s
 	}
-
 	if runtime.GOOS != "darwin" {
 		return s
 	}
@@ -185,25 +188,29 @@ func Truncate(str string, width int) string {
 	return runewidth.Truncate(str, width, string(tview.SemigraphicsHorizontalEllipsis))
 }
 
-func toMnemonic(s string) string {
-	if len(s) == 0 {
+func ToMnemonic(s string) string {
+	if s == "" {
 		return s
 	}
 
 	return "<" + keyConv(strings.ToLower(s)) + ">"
 }
 
-func formatNSMenu(i int, name string, styles config.Frame) string {
+func formatNSMenu(i int, name string, styles *config.Frame) string {
 	fmat := strings.Replace(menuIndexFmt, "[key", "["+styles.Menu.NumKeyColor.String(), 1)
-	fmat = strings.Replace(fmat, ":bg:", ":"+styles.Title.BgColor.String()+":", -1)
+	fmat = strings.ReplaceAll(fmat, ":bg:", ":"+styles.Title.BgColor.String()+":")
 	fmat = strings.Replace(fmat, "[fg", "["+styles.Menu.FgColor.String(), 1)
+	fmat = strings.Replace(fmat, "fgstyle]", styles.Menu.FgStyle.ToShortString()+"]", 1)
+
 	return fmt.Sprintf(fmat, i, name)
 }
 
-func formatPlainMenu(h model.MenuHint, size int, styles config.Frame) string {
-	menuFmt := " [key:-:b]%-" + strconv.Itoa(size+2) + "s [fg:-:d]%s "
+func formatPlainMenu(h model.MenuHint, size int, styles *config.Frame) string {
+	menuFmt := " [key:-:b]%-" + strconv.Itoa(size+2) + "s [fg:-:fgstyle]%s "
 	fmat := strings.Replace(menuFmt, "[key", "["+styles.Menu.KeyColor.String(), 1)
 	fmat = strings.Replace(fmat, "[fg", "["+styles.Menu.FgColor.String(), 1)
-	fmat = strings.Replace(fmat, ":bg:", ":"+styles.Title.BgColor.String()+":", -1)
-	return fmt.Sprintf(fmat, toMnemonic(h.Mnemonic), h.Description)
+	fmat = strings.ReplaceAll(fmat, ":bg:", ":"+styles.Title.BgColor.String()+":")
+	fmat = strings.Replace(fmat, "fgstyle]", styles.Menu.FgStyle.ToShortString()+"]", 1)
+
+	return fmt.Sprintf(fmat, ToMnemonic(h.Mnemonic), h.Description)
 }

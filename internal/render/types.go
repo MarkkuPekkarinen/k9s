@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Authors of K9s
+
 package render
 
 const (
@@ -42,8 +45,31 @@ const (
 	UnknownValue = "<unknown>"
 
 	// UnsetValue represent an unset value.
-	UnsetValue = ""
+	UnsetValue = "<unset>"
 
 	// ZeroValue represents a zero value.
 	ZeroValue = "0"
+)
+
+// Common header column names shared across resource renderers.
+const (
+	colNamespace  = "NAMESPACE"
+	colName       = "NAME"
+	colAge        = "AGE"
+	colStatus     = "STATUS"
+	colValid      = "VALID"
+	colReady      = "READY"
+	colCPU        = "CPU"
+	colMEM        = "MEM"
+	colLabels     = "LABELS"
+	colType       = "TYPE"
+	colKind       = "KIND"
+	colPorts      = "PORTS"
+	colSelector   = "SELECTOR"
+	colContainers = "CONTAINERS"
+	colImages     = "IMAGES"
+	colDesired    = "DESIRED"
+	colCurrent    = "CURRENT"
+	colVS         = "VS"
+	colVersion    = "VERSION"
 )

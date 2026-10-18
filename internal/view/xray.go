@@ -1,28 +1,34 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Authors of K9s
+
 package view
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/derailed/k9s/internal"
 	"github.com/derailed/k9s/internal/client"
 	"github.com/derailed/k9s/internal/config"
 	"github.com/derailed/k9s/internal/dao"
 	"github.com/derailed/k9s/internal/model"
+	"github.com/derailed/k9s/internal/render"
+	"github.com/derailed/k9s/internal/slogs"
 	"github.com/derailed/k9s/internal/ui"
 	"github.com/derailed/k9s/internal/ui/dialog"
+	"github.com/derailed/k9s/internal/view/cmd"
 	"github.com/derailed/k9s/internal/xray"
 	"github.com/derailed/tcell/v2"
 	"github.com/derailed/tview"
-	"github.com/rs/zerolog/log"
 	"github.com/sahilm/fuzzy"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 const xrayTitle = "Xray"
@@ -34,21 +40,25 @@ type Xray struct {
 	*ui.Tree
 
 	app      *App
-	gvr      client.GVR
-	meta     metav1.APIResource
+	gvr      *client.GVR
+	meta     *metav1.APIResource
 	model    *model.Tree
 	cancelFn context.CancelFunc
 	envFn    EnvFunc
 }
 
 // NewXray returns a new view.
-func NewXray(gvr client.GVR) ResourceViewer {
+func NewXray(gvr *client.GVR) ResourceViewer {
 	return &Xray{
 		gvr:   gvr,
 		Tree:  ui.NewTree(),
 		model: model.NewTree(gvr),
 	}
 }
+
+func (*Xray) SetCommand(*cmd.Interpreter)            {}
+func (*Xray) SetFilter(string, bool)                 {}
+func (*Xray) SetLabelSelector(labels.Selector, bool) {}
 
 // Init initializes the view.
 func (x *Xray) Init(ctx context.Context) error {
@@ -76,14 +86,14 @@ func (x *Xray) Init(ctx context.Context) error {
 	x.SetGraphicsColor(x.app.Styles.Xray().GraphicColor.Color())
 	x.SetTitle(fmt.Sprintf(" %s-%s ", xrayTitle, cases.Title(language.Und, cases.NoLower).String(x.gvr.R())))
 
-	x.model.SetRefreshRate(time.Duration(x.app.Config.K9s.GetRefreshRate()) * time.Second)
+	x.model.SetRefreshRate(x.app.Config.K9s.RefreshDuration())
 	x.model.SetNamespace(client.CleanseNamespace(x.app.Config.ActiveNamespace()))
 	x.model.AddListener(x)
 
 	x.SetChangedFunc(func(n *tview.TreeNode) {
 		spec, ok := n.GetReference().(xray.NodeSpec)
 		if !ok {
-			log.Error().Msgf("No ref found on node %s", n.GetText())
+			slog.Error("No ref found on node", slogs.FQN, n.GetText())
 			return
 		}
 		x.SetSelectedItem(spec.AsPath())
@@ -101,17 +111,34 @@ func (*Xray) InCmdMode() bool {
 
 // ExtraHints returns additional hints.
 func (x *Xray) ExtraHints() map[string]string {
-	if x.app.Config.K9s.NoIcons {
+	if x.app.Config.K9s.UI.NoIcons {
 		return nil
 	}
 	return xray.EmojiInfo()
 }
 
 // SetInstance sets specific resource instance.
-func (x *Xray) SetInstance(string) {}
+func (*Xray) SetInstance(string) {}
+
+func (x *Xray) bindDangerousKeys(aa *ui.KeyActions) {
+	if client.Can(x.meta.Verbs, "edit") {
+		aa.Add(ui.KeyE, ui.NewKeyActionWithOpts("Edit", x.editCmd,
+			ui.ActionOpts{
+				Visible:   true,
+				Dangerous: true,
+			}))
+	}
+	if client.Can(x.meta.Verbs, "delete") {
+		aa.Add(tcell.KeyCtrlD, ui.NewKeyActionWithOpts("Delete", x.deleteCmd,
+			ui.ActionOpts{
+				Visible:   true,
+				Dangerous: true,
+			}))
+	}
+}
 
 func (x *Xray) bindKeys() {
-	x.Actions().Add(ui.KeyActions{
+	x.Actions().Bulk(ui.KeyMap{
 		ui.KeySlash:     ui.NewSharedKeyAction("Filter Mode", x.activateCmd, false),
 		tcell.KeyEscape: ui.NewSharedKeyAction("Filter Reset", x.resetCmd, false),
 		tcell.KeyEnter:  ui.NewKeyAction("Goto", x.gotoCmd, true),
@@ -124,19 +151,23 @@ func (x *Xray) keyEntered() {
 }
 
 func (x *Xray) refreshActions() {
-	aa := make(ui.KeyActions)
+	aa := ui.NewKeyActions()
 
 	defer func() {
-		pluginActions(x, aa)
-		hotKeyActions(x, aa)
+		if err := pluginActions(x, aa); err != nil {
+			slog.Warn("Plugins load failed", slogs.Error, err)
+		}
+		if err := hotKeyActions(x, aa); err != nil {
+			slog.Warn("HotKeys load failed", slogs.Error, err)
+		}
 
-		x.Actions().Add(aa)
+		x.Actions().Merge(aa)
 		x.app.Menu().HydrateMenu(x.Hints())
 	}()
 
 	x.Actions().Clear()
 	x.bindKeys()
-	x.Tree.BindKeys()
+	x.BindKeys()
 
 	spec := x.selectedSpec()
 	if spec == nil {
@@ -145,38 +176,62 @@ func (x *Xray) refreshActions() {
 
 	gvr := spec.GVR()
 	var err error
-	x.meta, err = dao.MetaAccess.MetaFor(client.NewGVR(gvr))
+	x.meta, err = dao.MetaAccess.MetaFor(gvr)
 	if err != nil {
-		log.Warn().Msgf("NO meta for %q -- %s", gvr, err)
+		slog.Warn("No meta found!",
+			slogs.GVR, gvr,
+			slogs.Error, err,
+		)
 		return
 	}
 
-	if client.Can(x.meta.Verbs, "edit") {
-		aa[ui.KeyE] = ui.NewKeyAction("Edit", x.editCmd, true)
-	}
-	if client.Can(x.meta.Verbs, "delete") {
-		aa[tcell.KeyCtrlD] = ui.NewKeyAction("Delete", x.deleteCmd, true)
+	if !x.app.Config.IsReadOnly() {
+		x.bindDangerousKeys(aa)
 	}
 	if !dao.IsK9sMeta(x.meta) {
-		aa[ui.KeyY] = ui.NewKeyAction("YAML", x.viewCmd, true)
-		aa[ui.KeyD] = ui.NewKeyAction("Describe", x.describeCmd, true)
+		aa.Bulk(ui.KeyMap{
+			ui.KeyY: ui.NewKeyAction(yamlAction, x.viewCmd, true),
+			ui.KeyD: ui.NewKeyAction("Describe", x.describeCmd, true),
+		})
 	}
 
 	switch gvr {
-	case "v1/namespaces":
+	case client.NsGVR:
 		x.Actions().Delete(tcell.KeyEnter)
-	case "containers":
+	case client.CoGVR:
 		x.Actions().Delete(tcell.KeyEnter)
-		aa[ui.KeyS] = ui.NewKeyAction("Shell", x.shellCmd, true)
-		aa[ui.KeyL] = ui.NewKeyAction("Logs", x.logsCmd(false), true)
-		aa[ui.KeyP] = ui.NewKeyAction("Logs Previous", x.logsCmd(true), true)
-	case "v1/pods":
-		aa[ui.KeyS] = ui.NewKeyAction("Shell", x.shellCmd, true)
-		aa[ui.KeyA] = ui.NewKeyAction("Attach", x.attachCmd, true)
-		aa[ui.KeyL] = ui.NewKeyAction("Logs", x.logsCmd(false), true)
-		aa[ui.KeyP] = ui.NewKeyAction("Logs Previous", x.logsCmd(true), true)
+		aa.Bulk(ui.KeyMap{
+			ui.KeyL: ui.NewKeyAction("Logs", x.logsCmd(false), true),
+			ui.KeyP: ui.NewKeyAction("Logs Previous", x.logsCmd(true), true),
+		})
+		if !x.app.Config.IsReadOnly() {
+			aa.Add(ui.KeyS, ui.NewKeyActionWithOpts("Shell", x.shellCmd,
+				ui.ActionOpts{
+					Visible:   true,
+					Dangerous: true,
+				}))
+		}
+	case client.PodGVR:
+		aa.Bulk(ui.KeyMap{
+			ui.KeyL: ui.NewKeyAction("Logs", x.logsCmd(false), true),
+			ui.KeyP: ui.NewKeyAction("Logs Previous", x.logsCmd(true), true),
+		})
+		if !x.app.Config.IsReadOnly() {
+			aa.Bulk(ui.KeyMap{
+				ui.KeyS: ui.NewKeyActionWithOpts("Shell", x.shellCmd,
+					ui.ActionOpts{
+						Visible:   true,
+						Dangerous: true,
+					}),
+				ui.KeyA: ui.NewKeyActionWithOpts("Attach", x.attachCmd,
+					ui.ActionOpts{
+						Visible:   true,
+						Dangerous: true,
+					}),
+			})
+		}
 	}
-	x.Actions().Add(aa)
+	x.Actions().Merge(aa)
 }
 
 // GetSelectedPath returns the current selection as string.
@@ -196,7 +251,10 @@ func (x *Xray) selectedSpec() *xray.NodeSpec {
 
 	ref, ok := node.GetReference().(xray.NodeSpec)
 	if !ok {
-		log.Error().Msgf("Expecting a NodeSpec!")
+		slog.Error("Expecting a NodeSpec",
+			slogs.Path, node.GetText(),
+			slogs.RefType, fmt.Sprintf("%T", node.GetReference()),
+		)
 		return nil
 	}
 
@@ -223,7 +281,7 @@ func (x *Xray) k9sEnv() Env {
 	}
 
 	switch spec.GVR() {
-	case "containers":
+	case client.CoGVR:
 		_, co := client.Namespaced(spec.Path())
 		env["CONTAINER"] = co
 		ns, n := client.Namespaced(*spec.ParentPath())
@@ -237,12 +295,12 @@ func (x *Xray) k9sEnv() Env {
 }
 
 // Aliases returns all available aliases.
-func (x *Xray) Aliases() []string {
-	return append(x.meta.ShortNames, x.meta.SingularName, x.meta.Name)
+func (x *Xray) Aliases() sets.Set[string] {
+	return aliases(x.meta, x.app.command.AliasesFor(client.NewGVRFromMeta(x.meta)))
 }
 
 func (x *Xray) logsCmd(prev bool) func(evt *tcell.EventKey) *tcell.EventKey {
-	return func(evt *tcell.EventKey) *tcell.EventKey {
+	return func(*tcell.EventKey) *tcell.EventKey {
 		spec := x.selectedSpec()
 		if spec == nil {
 			return nil
@@ -257,13 +315,13 @@ func (x *Xray) logsCmd(prev bool) func(evt *tcell.EventKey) *tcell.EventKey {
 func (x *Xray) showLogs(spec *xray.NodeSpec, prev bool) {
 	// Need to load and wait for pods
 	path, co := spec.Path(), ""
-	if spec.GVR() == "containers" {
+	if spec.GVR() == client.CoGVR {
 		_, coName := client.Namespaced(spec.Path())
 		path, co = *spec.ParentPath(), coName
 	}
 
 	ns, _ := client.Namespaced(path)
-	_, err := x.app.factory.CanForResource(ns, "v1/pods", client.MonitorAccess)
+	_, err := x.app.factory.CanForResource(ns, client.PodGVR, client.ListAccess)
 	if err != nil {
 		x.app.Flash().Err(err)
 		return
@@ -274,12 +332,12 @@ func (x *Xray) showLogs(spec *xray.NodeSpec, prev bool) {
 		Container: co,
 		Previous:  prev,
 	}
-	if err := x.app.inject(NewLog(client.NewGVR("v1/pods"), &opts), false); err != nil {
+	if err := x.app.inject(NewLog(client.PodGVR, &opts), false); err != nil {
 		x.app.Flash().Err(err)
 	}
 }
 
-func (x *Xray) shellCmd(evt *tcell.EventKey) *tcell.EventKey {
+func (x *Xray) shellCmd(*tcell.EventKey) *tcell.EventKey {
 	spec := x.selectedSpec()
 	if spec == nil {
 		return nil
@@ -291,19 +349,19 @@ func (x *Xray) shellCmd(evt *tcell.EventKey) *tcell.EventKey {
 	}
 
 	path, co := spec.Path(), ""
-	if spec.GVR() == "containers" {
+	if spec.GVR() == client.CoGVR {
 		_, co = client.Namespaced(spec.Path())
 		path = *spec.ParentPath()
 	}
 
-	if err := containerShellin(x.app, x, path, co); err != nil {
+	if err := containerShellIn(x.app, x, path, co); err != nil {
 		x.app.Flash().Err(err)
 	}
 
 	return nil
 }
 
-func (x *Xray) attachCmd(evt *tcell.EventKey) *tcell.EventKey {
+func (x *Xray) attachCmd(*tcell.EventKey) *tcell.EventKey {
 	spec := x.selectedSpec()
 	if spec == nil {
 		return nil
@@ -315,7 +373,7 @@ func (x *Xray) attachCmd(evt *tcell.EventKey) *tcell.EventKey {
 	}
 
 	path, co := spec.Path(), ""
-	if spec.GVR() == "containers" {
+	if spec.GVR() == client.CoGVR {
 		path = *spec.ParentPath()
 	}
 
@@ -339,7 +397,7 @@ func (x *Xray) viewCmd(evt *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 
-	details := NewDetails(x.app, "YAML", spec.Path(), true).Update(raw)
+	details := NewDetails(x.app, yamlAction, spec.Path(), contentYAML, true).Update(raw)
 	if err := x.app.inject(details, false); err != nil {
 		x.app.Flash().Err(err)
 	}
@@ -356,13 +414,15 @@ func (x *Xray) deleteCmd(evt *tcell.EventKey) *tcell.EventKey {
 	x.Stop()
 	defer x.Start()
 	{
-		gvr := client.NewGVR(spec.GVR())
-		meta, err := dao.MetaAccess.MetaFor(gvr)
+		meta, err := dao.MetaAccess.MetaFor(spec.GVR())
 		if err != nil {
-			log.Warn().Msgf("NO meta for %q -- %s", spec.GVR(), err)
+			slog.Warn("No meta found!",
+				slogs.GVR, spec.GVR(),
+				slogs.Error, err,
+			)
 			return nil
 		}
-		x.resourceDelete(gvr, spec, fmt.Sprintf("Delete %s %s?", meta.SingularName, spec.Path()))
+		x.resourceDelete(spec.GVR(), spec, fmt.Sprintf("Delete %s %s?", meta.SingularName, spec.Path()))
 	}
 
 	return nil
@@ -379,7 +439,7 @@ func (x *Xray) describeCmd(evt *tcell.EventKey) *tcell.EventKey {
 	return nil
 }
 
-func (x *Xray) describe(gvr, path string) {
+func (x *Xray) describe(gvr *client.GVR, path string) {
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, internal.KeyFactory, x.app.factory)
 
@@ -389,7 +449,7 @@ func (x *Xray) describe(gvr, path string) {
 		return
 	}
 
-	details := NewDetails(x.app, "Describe", path, true).Update(yaml)
+	details := NewDetails(x.app, "Describe", path, contentYAML, true).Update(yaml)
 	if err := x.app.inject(details, false); err != nil {
 		x.app.Flash().Err(err)
 	}
@@ -406,15 +466,17 @@ func (x *Xray) editCmd(evt *tcell.EventKey) *tcell.EventKey {
 	{
 		ns, n := client.Namespaced(spec.Path())
 		args := make([]string, 0, 10)
-		args = append(args, "edit")
-		args = append(args, client.NewGVR(spec.GVR()).R())
-		args = append(args, "-n", ns)
-		args = append(args, "--context", x.app.Config.K9s.CurrentContext)
+		args = append(args,
+			"edit",
+			spec.GVR().R(),
+			"-n", ns,
+			"--context", x.app.Config.K9s.ActiveContextName(),
+		)
 		if cfg := x.app.Conn().Config().Flags().KubeConfig; cfg != nil && *cfg != "" {
 			args = append(args, "--kubeconfig", *cfg)
 		}
-		if !runK(x.app, shellOpts{args: append(args, n)}) {
-			x.app.Flash().Err(errors.New("Edit exec failed"))
+		if err := runK(x.app, &shellOpts{args: append(args, n)}); err != nil {
+			x.app.Flash().Errf("Edit exec failed: %s", err)
 		}
 	}
 
@@ -442,13 +504,18 @@ func (x *Xray) resetCmd(evt *tcell.EventKey) *tcell.EventKey {
 	return nil
 }
 
-func (x *Xray) gotoCmd(evt *tcell.EventKey) *tcell.EventKey {
+func (x *Xray) gotoCmd(*tcell.EventKey) *tcell.EventKey {
 	if x.CmdBuff().IsActive() {
-		if ui.IsLabelSelector(x.CmdBuff().GetText()) {
+		if internal.IsLabelSelector(x.CmdBuff().GetText()) {
 			x.Start()
 		}
 		x.CmdBuff().SetActive(false)
-		x.GetRoot().ExpandAll()
+		// The root is populated asynchronously and may not be set yet.
+		root := x.GetRoot()
+		if root == nil {
+			return nil
+		}
+		root.ExpandAll()
 
 		return nil
 	}
@@ -460,23 +527,23 @@ func (x *Xray) gotoCmd(evt *tcell.EventKey) *tcell.EventKey {
 	if len(strings.Split(spec.Path(), "/")) == 1 {
 		return nil
 	}
-	x.app.gotoResource(client.NewGVR(spec.GVR()).R(), spec.Path(), false)
+	x.app.gotoResource(spec.GVR().String(), spec.Path(), false, true)
 
 	return nil
 }
 
 func (x *Xray) filter(root *xray.TreeNode) *xray.TreeNode {
 	q := x.CmdBuff().GetText()
-	if x.CmdBuff().Empty() || ui.IsLabelSelector(q) {
+	if x.CmdBuff().Empty() || internal.IsLabelSelector(q) {
 		return root
 	}
 
 	x.UpdateTitle()
-	if ui.IsFuzzySelector(q) {
-		return root.Filter(q, fuzzyFilter)
+	if f, ok := internal.IsFuzzySelector(q); ok {
+		return root.Filter(f, fuzzyFilter)
 	}
 
-	if ui.IsInverseSelector(q) {
+	if internal.IsInverseSelector(q) {
 		return root.Filter(q, rxInverseFilter)
 	}
 
@@ -499,7 +566,7 @@ func (x *Xray) TreeLoadFailed(err error) {
 }
 
 func (x *Xray) update(node *xray.TreeNode) {
-	root := makeTreeNode(node, x.ExpandNodes(), x.app.Config.K9s.NoIcons, x.app.Styles)
+	root := makeTreeNode(node, x.ExpandNodes(), x.app.Config.K9s.UI.NoIcons, x.app.Styles)
 	if node == nil {
 		x.app.QueueUpdateDraw(func() {
 			x.SetRoot(root)
@@ -519,7 +586,10 @@ func (x *Xray) update(node *xray.TreeNode) {
 		root.Walk(func(node, parent *tview.TreeNode) bool {
 			spec, ok := node.GetReference().(xray.NodeSpec)
 			if !ok {
-				log.Error().Msgf("Expecting a NodeSpec but got %T", node.GetReference())
+				slog.Error("Expecting a NodeSpec",
+					slogs.FQN, node.GetText(),
+					slogs.RefType, fmt.Sprintf("%T", node.GetReference()),
+				)
 				return false
 			}
 			// BOZO!! Figure this out expand/collapse but the root
@@ -540,13 +610,13 @@ func (x *Xray) update(node *xray.TreeNode) {
 
 // TreeChanged notifies the model data changed.
 func (x *Xray) TreeChanged(node *xray.TreeNode) {
-	x.Count = node.Count(x.gvr.String())
+	x.Count = node.Count(x.gvr)
 	x.update(x.filter(node))
 	x.UpdateTitle()
 }
 
 func (x *Xray) hydrate(parent *tview.TreeNode, n *xray.TreeNode) {
-	node := makeTreeNode(n, x.ExpandNodes(), x.app.Config.K9s.NoIcons, x.app.Styles)
+	node := makeTreeNode(n, x.ExpandNodes(), x.app.Config.K9s.UI.NoIcons, x.app.Styles)
 	for _, c := range n.Children {
 		x.hydrate(node, c)
 	}
@@ -554,10 +624,10 @@ func (x *Xray) hydrate(parent *tview.TreeNode, n *xray.TreeNode) {
 }
 
 // SetEnvFn sets the custom environment function.
-func (x *Xray) SetEnvFn(EnvFunc) {}
+func (*Xray) SetEnvFn(EnvFunc) {}
 
 // Refresh updates the view.
-func (x *Xray) Refresh() {}
+func (*Xray) Refresh() {}
 
 // BufferCompleted indicates the buffer was changed.
 func (x *Xray) BufferCompleted(_, _ string) {
@@ -565,7 +635,7 @@ func (x *Xray) BufferCompleted(_, _ string) {
 }
 
 // BufferChanged indicates the buffer was changed.
-func (x *Xray) BufferChanged(_, _ string) {}
+func (*Xray) BufferChanged(_, _ string) {}
 
 // BufferActive indicates the buff activity changed.
 func (x *Xray) BufferActive(state bool, k model.BufferKind) {
@@ -576,9 +646,11 @@ func (x *Xray) defaultContext() context.Context {
 	ctx := context.WithValue(context.Background(), internal.KeyFactory, x.app.factory)
 	ctx = context.WithValue(ctx, internal.KeyFields, "")
 	if x.CmdBuff().Empty() {
-		ctx = context.WithValue(ctx, internal.KeyLabels, "")
+		ctx = context.WithValue(ctx, internal.KeyLabels, labels.Everything())
 	} else {
-		ctx = context.WithValue(ctx, internal.KeyLabels, ui.TrimLabelSelector(x.CmdBuff().GetText()))
+		if sel, err := ui.ExtractLabelSelector(x.CmdBuff().GetText()); err == nil {
+			ctx = context.WithValue(ctx, internal.KeyLabels, sel)
+		}
 	}
 
 	return ctx
@@ -606,19 +678,19 @@ func (x *Xray) Stop() {
 }
 
 // AddBindKeysFn sets up extra key bindings.
-func (x *Xray) AddBindKeysFn(BindKeysFunc) {}
+func (*Xray) AddBindKeysFn(BindKeysFunc) {}
 
 // SetContextFn sets custom context.
-func (x *Xray) SetContextFn(ContextFunc) {}
+func (*Xray) SetContextFn(ContextFunc) {}
 
 // Name returns the component name.
-func (x *Xray) Name() string { return "XRay" }
+func (*Xray) Name() string { return "XRay" }
 
 // GetTable returns the underlying table.
-func (x *Xray) GetTable() *Table { return nil }
+func (*Xray) GetTable() *Table { return nil }
 
 // GVR returns a resource descriptor.
-func (x *Xray) GVR() client.GVR { return x.gvr }
+func (x *Xray) GVR() *client.GVR { return x.gvr }
 
 // App returns the current app handle.
 func (x *Xray) App() *App {
@@ -640,30 +712,39 @@ func (x *Xray) styleTitle() string {
 		ns = client.NamespaceAll
 	}
 
-	var title string
+	var (
+		title  string
+		styles = x.app.Styles.Frame()
+	)
 	if ns == client.ClusterScope {
-		title = ui.SkinTitle(fmt.Sprintf(ui.TitleFmt, base, x.Count), x.app.Styles.Frame())
+		title = ui.SkinTitle(fmt.Sprintf(ui.TitleFmt, base, render.AsThousands(int64(x.Count))), &styles)
 	} else {
-		title = ui.SkinTitle(fmt.Sprintf(ui.NSTitleFmt, base, ns, x.Count), x.app.Styles.Frame())
+		title = ui.SkinTitle(fmt.Sprintf(ui.NSTitleFmt, base, ns, render.AsThousands(int64(x.Count))), &styles)
 	}
 
 	buff := x.CmdBuff().GetText()
 	if buff == "" {
 		return title
 	}
-	if ui.IsLabelSelector(buff) {
-		buff = ui.TrimLabelSelector(buff)
+	if internal.IsLabelSelector(buff) {
+		if sel, err := ui.ExtractLabelSelector(buff); err == nil {
+			buff = sel.String()
+		}
 	}
 
-	return title + ui.SkinTitle(fmt.Sprintf(ui.SearchFmt, buff), x.app.Styles.Frame())
+	return title + ui.SkinTitle(fmt.Sprintf(ui.SearchFmt, buff), &styles)
 }
 
-func (x *Xray) resourceDelete(gvr client.GVR, spec *xray.NodeSpec, msg string) {
-	dialog.ShowDelete(x.app.Styles.Dialog(), x.app.Content.Pages, msg, func(propagation *metav1.DeletionPropagation, force bool) {
+func (x *Xray) resourceDelete(gvr *client.GVR, spec *xray.NodeSpec, msg string) {
+	d := x.app.Styles.Dialog()
+	dialog.ShowDelete(&d, x.app.Content.Pages, msg, func(_ *metav1.DeletionPropagation, force bool) {
 		x.app.Flash().Infof("Delete resource %s %s", spec.GVR(), spec.Path())
 		accessor, err := dao.AccessorFor(x.app.factory, gvr)
 		if err != nil {
-			log.Error().Err(err).Msgf("No accessor")
+			slog.Error("No accessor found",
+				slogs.GVR, gvr,
+				slogs.Error, err,
+			)
 			return
 		}
 
@@ -721,7 +802,7 @@ func rxInverseFilter(q, path string) bool {
 	return true
 }
 
-func makeTreeNode(node *xray.TreeNode, expanded bool, showIcons bool, styles *config.Styles) *tview.TreeNode {
+func makeTreeNode(node *xray.TreeNode, expanded, showIcons bool, styles *config.Styles) *tview.TreeNode {
 	n := tview.NewTreeNode("No data...")
 	if node != nil {
 		n.SetText(node.Title(showIcons))

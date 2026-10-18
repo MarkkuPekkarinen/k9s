@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Authors of K9s
+
 package view
 
 import (
@@ -12,25 +15,21 @@ type PersistentVolumeClaim struct {
 }
 
 // NewPersistentVolumeClaim returns a new viewer.
-func NewPersistentVolumeClaim(gvr client.GVR) ResourceViewer {
+func NewPersistentVolumeClaim(gvr *client.GVR) ResourceViewer {
 	v := PersistentVolumeClaim{
-		ResourceViewer: NewBrowser(gvr),
+		ResourceViewer: NewOwnerExtender(NewBrowser(gvr)),
 	}
 	v.AddBindKeysFn(v.bindKeys)
 
 	return &v
 }
 
-func (p *PersistentVolumeClaim) bindKeys(aa ui.KeyActions) {
-	aa.Add(ui.KeyActions{
-		ui.KeyU:      ui.NewKeyAction("UsedBy", p.refCmd, true),
-		ui.KeyShiftS: ui.NewKeyAction("Sort Status", p.GetTable().SortColCmd("STATUS", true), false),
-		ui.KeyShiftV: ui.NewKeyAction("Sort Volume", p.GetTable().SortColCmd("VOLUME", true), false),
-		ui.KeyShiftO: ui.NewKeyAction("Sort StorageClass", p.GetTable().SortColCmd("STORAGECLASS", true), false),
-		ui.KeyShiftC: ui.NewKeyAction("Sort Capacity", p.GetTable().SortColCmd("CAPACITY", true), false),
+func (p *PersistentVolumeClaim) bindKeys(aa *ui.KeyActions) {
+	aa.Bulk(ui.KeyMap{
+		ui.KeyU: ui.NewKeyAction("UsedBy", p.refCmd, true),
 	})
 }
 
 func (p *PersistentVolumeClaim) refCmd(evt *tcell.EventKey) *tcell.EventKey {
-	return scanRefs(evt, p.App(), p.GetTable(), "v1/persistentvolumeclaims")
+	return scanRefs(evt, p.App(), p.GetTable(), client.PvcGVR)
 }

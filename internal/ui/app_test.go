@@ -1,25 +1,28 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Authors of K9s
+
 package ui_test
 
 import (
 	"testing"
 
-	"github.com/derailed/k9s/internal/config"
+	"github.com/derailed/k9s/internal/config/mock"
 	"github.com/derailed/k9s/internal/ui"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestAppGetCmd(t *testing.T) {
-	a := ui.NewApp(config.NewConfig(nil), "")
+	a := ui.NewApp(mock.NewMockConfig(t), "")
 	a.Init()
-	a.CmdBuff().SetText("blee", "")
+	a.CmdBuff().SetText("blee", "", true)
 
 	assert.Equal(t, "blee", a.GetCmd())
 }
 
 func TestAppInCmdMode(t *testing.T) {
-	a := ui.NewApp(config.NewConfig(nil), "")
+	a := ui.NewApp(mock.NewMockConfig(t), "")
 	a.Init()
-	a.CmdBuff().SetText("blee", "")
+	a.CmdBuff().SetText("blee", "", true)
 	assert.False(t, a.InCmdMode())
 
 	a.CmdBuff().SetActive(false)
@@ -27,37 +30,37 @@ func TestAppInCmdMode(t *testing.T) {
 }
 
 func TestAppResetCmd(t *testing.T) {
-	a := ui.NewApp(config.NewConfig(nil), "")
+	a := ui.NewApp(mock.NewMockConfig(t), "")
 	a.Init()
-	a.CmdBuff().SetText("blee", "")
+	a.CmdBuff().SetText("blee", "", true)
 
 	a.ResetCmd()
 
-	assert.Equal(t, "", a.CmdBuff().GetText())
+	assert.Empty(t, a.CmdBuff().GetText())
 }
 
 func TestAppHasCmd(t *testing.T) {
-	a := ui.NewApp(config.NewConfig(nil), "")
+	a := ui.NewApp(mock.NewMockConfig(t), "")
 	a.Init()
 
 	a.ActivateCmd(true)
 	assert.False(t, a.HasCmd())
 
-	a.CmdBuff().SetText("blee", "")
+	a.CmdBuff().SetText("blee", "", true)
 	assert.True(t, a.InCmdMode())
 }
 
 func TestAppGetActions(t *testing.T) {
-	a := ui.NewApp(config.NewConfig(nil), "")
+	a := ui.NewApp(mock.NewMockConfig(t), "")
 	a.Init()
 
-	a.AddActions(ui.KeyActions{ui.KeyZ: ui.KeyAction{Description: "zorg"}})
+	a.GetActions().Add(ui.KeyZ, ui.KeyAction{Description: "zorg"})
 
-	assert.Equal(t, 6, len(a.GetActions()))
+	assert.Equal(t, 6, a.GetActions().Len())
 }
 
 func TestAppViews(t *testing.T) {
-	a := ui.NewApp(config.NewConfig(nil), "")
+	a := ui.NewApp(mock.NewMockConfig(t), "")
 	a.Init()
 
 	vv := []string{"crumbs", "logo", "prompt", "menu"}

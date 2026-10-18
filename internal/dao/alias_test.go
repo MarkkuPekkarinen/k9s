@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Authors of K9s
+
 package dao_test
 
 import (
@@ -9,70 +12,37 @@ import (
 	"github.com/derailed/k9s/internal/config"
 	"github.com/derailed/k9s/internal/dao"
 	"github.com/derailed/k9s/internal/render"
-	"github.com/derailed/k9s/internal/watch"
 	"github.com/stretchr/testify/assert"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/informers"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAliasList(t *testing.T) {
 	a := dao.Alias{}
-	a.Init(makeFactory(), client.NewGVR("aliases"))
+	a.Init(makeFactory(), client.AliGVR)
 
 	ctx := context.WithValue(context.Background(), internal.KeyAliases, makeAliases())
 	oo, err := a.List(ctx, "-")
 
-	assert.Nil(t, err)
-	assert.Equal(t, 2, len(oo))
-	assert.Equal(t, 2, len(oo[0].(render.AliasRes).Aliases))
+	require.NoError(t, err)
+	assert.Len(t, oo, 2)
+	assert.Len(t, oo[0].(render.AliasRes).Aliases, 2)
 }
 
 // ----------------------------------------------------------------------------
 // Helpers...
 
 func makeAliases() *dao.Alias {
+	gvr1 := client.NewGVR("v1/fred")
+	gvr2 := client.NewGVR("v1/blee")
+
 	return &dao.Alias{
 		Aliases: &config.Aliases{
 			Alias: config.Alias{
-				"fred": "v1/fred",
-				"f":    "v1/fred",
-				"blee": "v1/blee",
-				"b":    "v1/blee",
+				"fred": gvr1,
+				"f":    gvr1,
+				"blee": gvr2,
+				"b":    gvr2,
 			},
 		},
 	}
-}
-
-type testFactory struct{}
-
-var _ dao.Factory = testFactory{}
-
-func (f testFactory) Client() client.Connection {
-	return nil
-}
-
-func (f testFactory) Get(gvr, path string, wait bool, sel labels.Selector) (runtime.Object, error) {
-	return nil, nil
-}
-
-func (f testFactory) List(gvr, ns string, wait bool, sel labels.Selector) ([]runtime.Object, error) {
-	return nil, nil
-}
-
-func (f testFactory) ForResource(ns, gvr string) (informers.GenericInformer, error) {
-	return nil, nil
-}
-
-func (f testFactory) CanForResource(ns, gvr string, verbs []string) (informers.GenericInformer, error) {
-	return nil, nil
-}
-func (f testFactory) WaitForCacheSync() {}
-func (f testFactory) Forwarders() watch.Forwarders {
-	return nil
-}
-func (f testFactory) DeleteForwarder(string) {}
-
-func makeFactory() dao.Factory {
-	return testFactory{}
 }

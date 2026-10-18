@@ -1,31 +1,59 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Authors of K9s
+
 package view
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
-	"github.com/atotto/clipboard"
 	"github.com/derailed/k9s/internal"
 	"github.com/derailed/k9s/internal/client"
 	"github.com/derailed/k9s/internal/config"
+	"github.com/derailed/k9s/internal/dao"
 	"github.com/derailed/k9s/internal/model"
+	"github.com/derailed/k9s/internal/model1"
 	"github.com/derailed/k9s/internal/render"
+	"github.com/derailed/k9s/internal/slogs"
 	"github.com/derailed/k9s/internal/ui"
 	"github.com/derailed/tcell/v2"
 	"github.com/derailed/tview"
-	"github.com/rs/zerolog/log"
+	"github.com/sahilm/fuzzy"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-func clipboardWrite(text string) error {
-	return clipboard.WriteAll(text)
+func isBailoutEvt(evt *tcell.EventKey) bool {
+	return evt.Name() == "Ctrl+C"
+}
+
+func aliases(m *v1.APIResource, aa sets.Set[string]) sets.Set[string] {
+	ss := sets.New(aa.UnsortedList()...)
+	ss.Insert(m.Name)
+	ss.Insert(m.ShortNames...)
+	if m.SingularName != "" {
+		ss.Insert(m.SingularName)
+	}
+
+	return ss
+}
+
+var bracketRX = regexp.MustCompile(`\[(.+?)\[\]`)
+
+func sanitizeEsc(s string) string {
+	return bracketRX.ReplaceAllString(s, `[$1]`)
 }
 
 func cpCmd(flash *model.Flash, v *tview.TextView) func(*tcell.EventKey) *tcell.EventKey {
 	return func(evt *tcell.EventKey) *tcell.EventKey {
-		if err := clipboardWrite(v.GetText(true)); err != nil {
+		if err := clipboardWrite(sanitizeEsc(v.GetText(true))); err != nil {
 			flash.Err(err)
 			return evt
 		}
@@ -35,10 +63,10 @@ func cpCmd(flash *model.Flash, v *tview.TextView) func(*tcell.EventKey) *tcell.E
 	}
 }
 
-func parsePFAnn(s string) (string, string, bool) {
+func parsePFAnn(s string) (port, lport string, ok bool) {
 	tokens := strings.Split(s, ":")
 	if len(tokens) != 2 {
-		return "", "", false
+		return
 	}
 
 	return tokens[0], tokens[1], true
@@ -66,6 +94,8 @@ func k8sEnv(c *client.Config) Env {
 	kcfg := c.Flags().KubeConfig
 	if kcfg != nil && *kcfg != "" {
 		cfg = *kcfg
+	} else {
+		cfg = os.Getenv("KUBECONFIG")
 	}
 
 	return Env{
@@ -77,62 +107,63 @@ func k8sEnv(c *client.Config) Env {
 	}
 }
 
-func defaultEnv(c *client.Config, path string, header render.Header, row render.Row) Env {
+func defaultEnv(c *client.Config, path string, header model1.Header, row *model1.Row) Env {
 	env := k8sEnv(c)
 	env["NAMESPACE"], env["NAME"] = client.Namespaced(path)
-	for _, col := range header.Columns(true) {
-		env["COL-"+col] = row.Fields[header.IndexOf(col, true)]
+	if row == nil {
+		return env
+	}
+	for _, col := range header.ColumnNames(true) {
+		idx, ok := header.IndexOf(col, true)
+		if ok && idx < len(row.Fields) {
+			env["COL-"+col] = row.Fields[idx]
+		}
 	}
 
 	return env
 }
 
-func describeResource(app *App, m ui.Tabular, gvr, path string) {
-	v := NewLiveView(app, "Describe", model.NewDescribe(client.NewGVR(gvr), path))
+func describeResource(app *App, _ ui.Tabular, gvr *client.GVR, path string) {
+	v := NewLiveView(app, "Describe", model.NewDescribe(gvr, path))
 	if err := app.inject(v, false); err != nil {
 		app.Flash().Err(err)
 	}
 }
 
-func showPodsWithLabels(app *App, path string, sel map[string]string) {
-	labels := make([]string, 0, len(sel))
-	for k, v := range sel {
-		labels = append(labels, fmt.Sprintf("%s=%s", k, v))
-	}
-	showPods(app, path, strings.Join(labels, ","), "")
-}
-
-func showPods(app *App, path, labelSel, fieldSel string) {
-	if err := app.switchNS(client.AllNamespaces); err != nil {
-		app.Flash().Err(err)
-		return
-	}
-
-	v := NewPod(client.NewGVR("v1/pods"))
-	v.SetContextFn(podCtx(app, path, labelSel, fieldSel))
+func showReplicasets(app *App, path string, labelSel labels.Selector, fieldSel string) {
+	v := NewReplicaSet(client.RsGVR)
+	v.SetContextFn(func(ctx context.Context) context.Context {
+		ctx = context.WithValue(ctx, internal.KeyPath, path)
+		return context.WithValue(ctx, internal.KeyFields, fieldSel)
+	})
+	v.SetLabelSelector(labelSel, true)
 
 	ns, _ := client.Namespaced(path)
 	if err := app.Config.SetActiveNamespace(ns); err != nil {
-		log.Error().Err(err).Msg("Config NS set failed!")
+		slog.Error("Unable to set active namespace during show replicasets", slogs.Error, err)
 	}
 	if err := app.inject(v, false); err != nil {
 		app.Flash().Err(err)
 	}
 }
 
-func podCtx(app *App, path, labelSel, fieldSel string) ContextFunc {
+func showPods(app *App, path string, labelSel labels.Selector, fieldSel string) {
+	v := NewPod(client.PodGVR)
+	v.SetContextFn(podCtx(app, path, fieldSel))
+	v.SetLabelSelector(labelSel, true)
+
+	ns, _ := client.Namespaced(path)
+	if err := app.Config.SetActiveNamespace(ns); err != nil {
+		slog.Error("Unable to set active namespace during show pods", slogs.Error, err)
+	}
+	if err := app.inject(v, false); err != nil {
+		app.Flash().Err(err)
+	}
+}
+
+func podCtx(_ *App, path, fieldSel string) ContextFunc {
 	return func(ctx context.Context) context.Context {
 		ctx = context.WithValue(ctx, internal.KeyPath, path)
-		ctx = context.WithValue(ctx, internal.KeyLabels, labelSel)
-
-		ns, _ := client.Namespaced(path)
-		mx := client.NewMetricsServer(app.factory.Client())
-		nmx, err := mx.FetchPodsMetrics(ctx, ns)
-		if err != nil {
-			log.Debug().Err(err).Msgf("No pods metrics")
-		}
-		ctx = context.WithValue(ctx, internal.KeyMetrics, nmx)
-
 		return context.WithValue(ctx, internal.KeyFields, fieldSel)
 	}
 }
@@ -140,7 +171,7 @@ func podCtx(app *App, path, labelSel, fieldSel string) ContextFunc {
 func extractApp(ctx context.Context) (*App, error) {
 	app, ok := ctx.Value(internal.KeyApp).(*App)
 	if !ok {
-		return nil, errors.New("No application found in context")
+		return nil, errors.New("no application found in context")
 	}
 
 	return app, nil
@@ -154,7 +185,7 @@ func asKey(key string) (tcell.Key, error) {
 		}
 	}
 
-	return 0, fmt.Errorf("No matching key found %s", key)
+	return 0, fmt.Errorf("invalid key specified: %q", key)
 }
 
 // FwFQN returns a fully qualified ns/name:container id.
@@ -175,7 +206,7 @@ func containerID(path, co string) string {
 }
 
 // UrlFor computes fq url for a given benchmark configuration.
-func urlFor(cfg config.BenchConfig, port string) string {
+func urlFor(cfg *config.BenchConfig, port string) string {
 	host := "localhost"
 	if cfg.HTTP.Host != "" {
 		host = cfg.HTTP.Host
@@ -196,37 +227,62 @@ func fqn(ns, n string) string {
 	return ns + "/" + n
 }
 
-func decorateCpuMemHeaderRows(app *App, data *render.TableData) {
-	for colIndex, header := range data.Header {
+func decorateCpuMemHeaderRows(app *App, data *model1.TableData) {
+	for colIndex, header := range data.Header() {
 		var check string
 		if header.Name == "%CPU/L" {
-			check = "cpu"
+			check = config.CPU
 		}
 		if header.Name == "%MEM/L" {
-			check = "memory"
+			check = config.MEM
 		}
-		if len(check) == 0 {
+		if check == "" {
 			continue
 		}
-		for _, re := range data.RowEvents {
+		data.RowsRange(func(_ int, re model1.RowEvent) bool {
 			if re.Row.Fields[colIndex] == render.NAValue {
-				continue
+				return true
 			}
 			n, err := strconv.Atoi(re.Row.Fields[colIndex])
 			if err != nil {
-				continue
+				return true
 			}
 			if n > 100 {
 				n = 100
 			}
 			severity := app.Config.K9s.Thresholds.LevelFor(check, n)
 			if severity == config.SeverityLow {
-				continue
+				return true
 			}
 			color := app.Config.K9s.Thresholds.SeverityColor(check, n)
-			if len(color) > 0 {
+			if color != "" {
 				re.Row.Fields[colIndex] = "[" + color + "::b]" + re.Row.Fields[colIndex]
 			}
+
+			return true
+		})
+	}
+}
+
+func matchTag(i int, s string) string {
+	return `<<<"search_` + strconv.Itoa(i) + `">>>` + s + `<<<"">>>`
+}
+
+func linesWithRegions(lines []string, matches fuzzy.Matches) []string {
+	ll := make([]string, len(lines))
+	copy(ll, lines)
+	offsetForLine := make(map[int]int)
+	for i, m := range matches {
+		for _, loc := range dao.ContinuousRanges(m.MatchedIndexes) {
+			start, end := loc[0]+offsetForLine[m.Index], loc[1]+offsetForLine[m.Index]
+			line := ll[m.Index]
+			if end > len(line) {
+				end = len(line)
+			}
+			regionStr := matchTag(i, line[start:end])
+			ll[m.Index] = line[:start] + regionStr + line[end:]
+			offsetForLine[m.Index] += len(regionStr) - (end - start)
 		}
 	}
+	return ll
 }

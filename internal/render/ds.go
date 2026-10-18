@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Authors of K9s
+
 package render
 
 import (
@@ -5,11 +8,26 @@ import (
 	"strconv"
 
 	"github.com/derailed/k9s/internal/client"
+	"github.com/derailed/k9s/internal/model1"
 	"github.com/derailed/tview"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 )
+
+var defaultDSHeader = model1.Header{
+	model1.HeaderColumn{Name: colNamespace},
+	model1.HeaderColumn{Name: colName},
+	model1.HeaderColumn{Name: colVS, Attrs: model1.Attrs{VS: true}},
+	model1.HeaderColumn{Name: colDesired, Attrs: model1.Attrs{Align: tview.AlignRight}},
+	model1.HeaderColumn{Name: colCurrent, Attrs: model1.Attrs{Align: tview.AlignRight}},
+	model1.HeaderColumn{Name: colReady, Attrs: model1.Attrs{Align: tview.AlignRight}},
+	model1.HeaderColumn{Name: "UP-TO-DATE", Attrs: model1.Attrs{Align: tview.AlignRight}},
+	model1.HeaderColumn{Name: "AVAILABLE", Attrs: model1.Attrs{Align: tview.AlignRight}},
+	model1.HeaderColumn{Name: colLabels, Attrs: model1.Attrs{Wide: true}},
+	model1.HeaderColumn{Name: colValid, Attrs: model1.Attrs{Wide: true}},
+	model1.HeaderColumn{Name: colAge, Attrs: model1.Attrs{Time: true}},
+}
 
 // DaemonSet renders a K8s DaemonSet to screen.
 type DaemonSet struct {
@@ -17,46 +35,51 @@ type DaemonSet struct {
 }
 
 // Header returns a header row.
-func (DaemonSet) Header(ns string) Header {
-	return Header{
-		HeaderColumn{Name: "NAMESPACE"},
-		HeaderColumn{Name: "NAME"},
-		HeaderColumn{Name: "DESIRED", Align: tview.AlignRight},
-		HeaderColumn{Name: "CURRENT", Align: tview.AlignRight},
-		HeaderColumn{Name: "READY", Align: tview.AlignRight},
-		HeaderColumn{Name: "UP-TO-DATE", Align: tview.AlignRight},
-		HeaderColumn{Name: "AVAILABLE", Align: tview.AlignRight},
-		HeaderColumn{Name: "LABELS", Wide: true},
-		HeaderColumn{Name: "VALID", Wide: true},
-		HeaderColumn{Name: "AGE", Time: true},
-	}
+func (d DaemonSet) Header(_ string) model1.Header {
+	return d.doHeader(defaultDSHeader)
 }
 
 // Render renders a K8s resource to screen.
-func (d DaemonSet) Render(o interface{}, ns string, r *Row) error {
+func (d DaemonSet) Render(o any, _ string, row *model1.Row) error {
 	raw, ok := o.(*unstructured.Unstructured)
 	if !ok {
-		return fmt.Errorf("Expected DaemonSet, but got %T", o)
+		return fmt.Errorf("expected Unstructured, but got %T", o)
 	}
+	if err := d.defaultRow(raw, row); err != nil {
+		return err
+	}
+	if d.specs.isEmpty() {
+		return nil
+	}
+	cols, err := d.specs.realize(raw, defaultDSHeader, row)
+	cols.hydrateRow(row)
+
+	return err
+}
+
+// defaultRow populates the row fields with Deployment data.
+func (d DaemonSet) defaultRow(raw *unstructured.Unstructured, r *model1.Row) error {
 	var ds appsv1.DaemonSet
 	err := runtime.DefaultUnstructuredConverter.FromUnstructured(raw.Object, &ds)
 	if err != nil {
 		return err
 	}
 
-	r.ID = client.MetaFQN(ds.ObjectMeta)
-	r.Fields = Fields{
+	r.ID = client.MetaFQN(&ds.ObjectMeta)
+	r.Fields = model1.Fields{
 		ds.Namespace,
 		ds.Name,
+		computeVulScore(ds.Namespace, ds.Labels, &ds.Spec.Template.Spec),
 		strconv.Itoa(int(ds.Status.DesiredNumberScheduled)),
 		strconv.Itoa(int(ds.Status.CurrentNumberScheduled)),
 		strconv.Itoa(int(ds.Status.NumberReady)),
 		strconv.Itoa(int(ds.Status.UpdatedNumberScheduled)),
 		strconv.Itoa(int(ds.Status.NumberAvailable)),
 		mapToStr(ds.Labels),
-		asStatus(d.diagnose(ds.Status.DesiredNumberScheduled, ds.Status.NumberReady)),
-		toAge(ds.GetCreationTimestamp()),
+		AsStatus(d.diagnose(ds.Status.DesiredNumberScheduled, ds.Status.NumberReady)),
+		ToAge(ds.GetCreationTimestamp()),
 	}
+	stashAge(r, ds.GetCreationTimestamp())
 
 	return nil
 }

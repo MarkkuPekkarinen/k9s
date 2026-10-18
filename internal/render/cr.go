@@ -1,9 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Authors of K9s
+
 package render
 
 import (
 	"fmt"
 
 	"github.com/derailed/k9s/internal/client"
+	"github.com/derailed/k9s/internal/model1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -14,33 +18,51 @@ type ClusterRole struct {
 	Base
 }
 
+// Header returns a header row.
+func (c ClusterRole) Header(_ string) model1.Header {
+	return c.doHeader(defaultCRHeader)
+}
+
 // Header returns a header rbw.
-func (ClusterRole) Header(string) Header {
-	return Header{
-		HeaderColumn{Name: "NAME"},
-		HeaderColumn{Name: "LABELS", Wide: true},
-		HeaderColumn{Name: "AGE", Time: true},
-	}
+var defaultCRHeader = model1.Header{
+	model1.HeaderColumn{Name: colName},
+	model1.HeaderColumn{Name: colLabels, Attrs: model1.Attrs{Wide: true}},
+	model1.HeaderColumn{Name: colAge, Attrs: model1.Attrs{Time: true}},
 }
 
 // Render renders a K8s resource to screen.
-func (ClusterRole) Render(o interface{}, ns string, r *Row) error {
+func (p ClusterRole) Render(o any, _ string, row *model1.Row) error {
 	raw, ok := o.(*unstructured.Unstructured)
 	if !ok {
-		return fmt.Errorf("expecting clusterrole, but got %T", o)
+		return fmt.Errorf("expecting Unstructured, but got %T", o)
 	}
+	if err := p.defaultRow(raw, row); err != nil {
+		return err
+	}
+	if p.specs.isEmpty() {
+		return nil
+	}
+	cols, err := p.specs.realize(raw, defaultCRHeader, row)
+	cols.hydrateRow(row)
+
+	return err
+}
+
+// defaultRow populates the row fields with Deployment data.
+func (ClusterRole) defaultRow(raw *unstructured.Unstructured, r *model1.Row) error {
 	var cr rbacv1.ClusterRole
 	err := runtime.DefaultUnstructuredConverter.FromUnstructured(raw.Object, &cr)
 	if err != nil {
 		return err
 	}
 
-	r.ID = client.FQN("-", cr.ObjectMeta.Name)
-	r.Fields = Fields{
+	r.ID = client.FQN("-", cr.Name)
+	r.Fields = model1.Fields{
 		cr.Name,
 		mapToStr(cr.Labels),
-		toAge(cr.GetCreationTimestamp()),
+		ToAge(cr.GetCreationTimestamp()),
 	}
+	stashAge(r, cr.GetCreationTimestamp())
 
 	return nil
 }

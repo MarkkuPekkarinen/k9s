@@ -1,14 +1,11 @@
-package config
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Authors of K9s
 
-import (
-	"fmt"
-	"os"
-	"path/filepath"
-)
+package config
 
 const (
 	// DefaultRefreshRate represents the refresh interval.
-	DefaultRefreshRate = 2 // secs
+	DefaultRefreshRate float32 = 2.0 // secs
 
 	// DefaultLogLevel represents the default log level.
 	DefaultLogLevel = "info"
@@ -17,12 +14,9 @@ const (
 	DefaultCommand = ""
 )
 
-// DefaultLogFile represents the default K9s log file.
-var DefaultLogFile = filepath.Join(os.TempDir(), fmt.Sprintf("k9s-%s.log", MustK9sUser()))
-
 // Flags represents K9s configuration flags.
 type Flags struct {
-	RefreshRate   *int
+	RefreshRate   *float32
 	LogLevel      *string
 	LogFile       *string
 	Headless      *bool
@@ -32,15 +26,17 @@ type Flags struct {
 	ReadOnly      *bool
 	Write         *bool
 	Crumbsless    *bool
+	Splashless    *bool
+	Invert        *bool
 	ScreenDumpDir *string
 }
 
 // NewFlags returns new configuration flags.
 func NewFlags() *Flags {
 	return &Flags{
-		RefreshRate:   intPtr(DefaultRefreshRate),
+		RefreshRate:   float32Ptr(DefaultRefreshRate),
 		LogLevel:      strPtr(DefaultLogLevel),
-		LogFile:       strPtr(DefaultLogFile),
+		LogFile:       strPtr(AppLogFile),
 		Headless:      boolPtr(false),
 		Logoless:      boolPtr(false),
 		Command:       strPtr(DefaultCommand),
@@ -48,7 +44,9 @@ func NewFlags() *Flags {
 		ReadOnly:      boolPtr(false),
 		Write:         boolPtr(false),
 		Crumbsless:    boolPtr(false),
-		ScreenDumpDir: strPtr(K9sDefaultScreenDumpDir),
+		Splashless:    boolPtr(false),
+		Invert:        boolPtr(false),
+		ScreenDumpDir: strPtr(AppDumpsDir),
 	}
 }
 
@@ -56,8 +54,8 @@ func boolPtr(b bool) *bool {
 	return &b
 }
 
-func intPtr(i int) *int {
-	return &i
+func float32Ptr(f float32) *float32 {
+	return &f
 }
 
 func strPtr(s string) *string {

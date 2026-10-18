@@ -1,39 +1,46 @@
-package config
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Authors of K9s
 
-import (
-	"github.com/derailed/k9s/internal/client"
-)
+package config
 
 const (
 	// DefaultLoggerTailCount tracks default log tail size.
 	DefaultLoggerTailCount = 100
+
 	// MaxLogThreshold sets the max value for log size.
-	MaxLogThreshold = 5000
+	MaxLogThreshold = 5_000
+
 	// DefaultSinceSeconds tracks default log age.
-	DefaultSinceSeconds = 300 // all logs
+	DefaultSinceSeconds = -1 // tail logs by default
+
+	// DefaultLogBufferSize is the channel buffer for log streaming.
+	DefaultLogBufferSize = 50
 )
 
 // Logger tracks logger options.
 type Logger struct {
-	TailCount      int64 `yaml:"tail"`
-	BufferSize     int   `yaml:"buffer"`
-	SinceSeconds   int64 `yaml:"sinceSeconds"`
-	FullScreenLogs bool  `yaml:"fullScreenLogs"`
-	TextWrap       bool  `yaml:"textWrap"`
-	ShowTime       bool  `yaml:"showTime"`
+	TailCount         int64 `json:"tail" yaml:"tail"`
+	BufferSize        int   `json:"buffer" yaml:"buffer"`
+	SinceSeconds      int64 `json:"sinceSeconds" yaml:"sinceSeconds"`
+	TextWrap          bool  `json:"textWrap" yaml:"textWrap"`
+	DisableAutoscroll bool  `json:"disableAutoscroll" yaml:"disableAutoscroll"`
+	ColumnLock        bool  `json:"columnLock" yaml:"columnLock"`
+	ShowTime          bool  `json:"showTime" yaml:"showTime"`
+	LogBufferSize     int   `json:"logBufferSize" yaml:"logBufferSize"`
 }
 
 // NewLogger returns a new instance.
-func NewLogger() *Logger {
-	return &Logger{
-		TailCount:    DefaultLoggerTailCount,
-		BufferSize:   MaxLogThreshold,
-		SinceSeconds: DefaultSinceSeconds,
+func NewLogger() Logger {
+	return Logger{
+		TailCount:     DefaultLoggerTailCount,
+		BufferSize:    MaxLogThreshold,
+		SinceSeconds:  DefaultSinceSeconds,
+		LogBufferSize: DefaultLogBufferSize,
 	}
 }
 
 // Validate checks thresholds and make sure we're cool. If not use defaults.
-func (l *Logger) Validate(_ client.Connection, _ KubeSettings) {
+func (l Logger) Validate() Logger {
 	if l.TailCount <= 0 {
 		l.TailCount = DefaultLoggerTailCount
 	}
@@ -46,4 +53,9 @@ func (l *Logger) Validate(_ client.Connection, _ KubeSettings) {
 	if l.SinceSeconds == 0 {
 		l.SinceSeconds = DefaultSinceSeconds
 	}
+	if l.LogBufferSize <= 0 {
+		l.LogBufferSize = DefaultLogBufferSize
+	}
+
+	return l
 }

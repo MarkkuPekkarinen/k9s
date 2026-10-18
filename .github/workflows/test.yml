@@ -1,8 +1,8 @@
-name: K9s Checks
+name: K9s Test
 
 on:
   workflow_dispatch:
-    push:
+  push:
     branches:
       - master
     tags:
@@ -13,13 +13,13 @@ on:
       - master
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3.5.2
+        uses: actions/checkout@v7.0.1
 
       - name: Install Go
-        uses: actions/setup-go@v4.0.1
+        uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum

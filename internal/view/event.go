@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright Authors of K9s
+
 package view
 
 import (
@@ -6,13 +9,15 @@ import (
 	"github.com/derailed/tcell/v2"
 )
 
+const faultsFilter = "Warning|Error"
+
 // Event represents a command alias view.
 type Event struct {
 	ResourceViewer
 }
 
 // NewEvent returns a new alias view.
-func NewEvent(gvr client.GVR) ResourceViewer {
+func NewEvent(gvr *client.GVR) ResourceViewer {
 	e := Event{
 		ResourceViewer: NewBrowser(gvr),
 	}
@@ -22,14 +27,25 @@ func NewEvent(gvr client.GVR) ResourceViewer {
 	return &e
 }
 
-func (e *Event) bindKeys(aa ui.KeyActions) {
+func (e *Event) bindKeys(aa *ui.KeyActions) {
 	aa.Delete(tcell.KeyCtrlD, ui.KeyE, ui.KeyA)
-	aa.Add(ui.KeyActions{
-		ui.KeyShiftL: ui.NewKeyAction("Sort LastSeen", e.GetTable().SortColCmd("LAST SEEN", false), false),
-		ui.KeyShiftF: ui.NewKeyAction("Sort FirstSeen", e.GetTable().SortColCmd("FIRST SEEN", false), false),
-		ui.KeyShiftT: ui.NewKeyAction("Sort Type", e.GetTable().SortColCmd("TYPE", true), false),
-		ui.KeyShiftR: ui.NewKeyAction("Sort Reason", e.GetTable().SortColCmd("REASON", true), false),
-		ui.KeyShiftS: ui.NewKeyAction("Sort Source", e.GetTable().SortColCmd("SOURCE", true), false),
-		ui.KeyShiftC: ui.NewKeyAction("Sort Count", e.GetTable().SortColCmd("COUNT", true), false),
+	aa.Bulk(ui.KeyMap{
+		tcell.KeyCtrlZ: ui.NewKeyAction("Toggle Faults", e.toggleFaults, false),
 	})
+}
+
+func (e *Event) toggleFaults(*tcell.EventKey) *tcell.EventKey {
+	b, ok := e.ResourceViewer.(*Browser)
+	if !ok {
+		return nil
+	}
+	filter := b.CmdBuff().GetText()
+	if filter == faultsFilter {
+		e.SetFilter("", true)
+		e.App().Flash().Info("Showing all events")
+	} else {
+		e.SetFilter(faultsFilter, true)
+		e.App().Flash().Info("Showing Warning and Error events only")
+	}
+	return nil
 }
